@@ -247,6 +247,14 @@ def _deadline(text):
 
 def inbox(address: str, limit: int=25) -> list[dict[str,Any]]:
     gmail=_gmail_service(address)
+    domain = address.rsplit("@", 1)[-1].lower().strip() if "@" in address else ""
+    # Never fall back to legacy password IMAP for Gmail. That old path is what
+    # produced AUTHENTICATIONFAILED and defeats the passwordless OAuth design.
+    if domain in ("gmail.com", "googlemail.com") and gmail is None:
+        raise RuntimeError(
+            "Gmail is not connected with Google OAuth yet. "
+            "Use 'connect email' and finish the Google sign-in."
+        )
     if gmail:
         result=gmail.users().messages().list(userId="me",labelIds=["INBOX"],maxResults=limit).execute()
         rows=[]
