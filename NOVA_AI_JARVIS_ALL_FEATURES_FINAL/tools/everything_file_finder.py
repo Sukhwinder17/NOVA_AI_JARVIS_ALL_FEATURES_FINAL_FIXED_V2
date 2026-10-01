@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from core import config
@@ -109,25 +110,52 @@ def search(query: str, limit: int = 40):
 
 
     raw = []
-    if exe.exists():
+
+    def run_es(search_query: str):
         try:
             result = subprocess.run(
-                [str(exe), q],
+                [str(exe), "-a-d", "-n", str(limit), search_query],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=4,
+                timeout=5,
             )
             stdout = result.stdout or ""
-            if result.returncode == 0 and "IPC not found" not in stdout and "Error" not in stdout:
-                raw = stdout.splitlines()
+            return result.returncode, stdout
         except Exception:
-            pass
+            return -1, ""
 
-    # Everything is the authoritative whole-PC index; avoid recursive filesystem walks.
-    if not raw:
-        raw = []
+    if exe.exists():
+        code, stdout = run_es(q)
+
+        # ES exit code 8 means Everything is not running.
+        # Start it in the background (no search window), then retry.
+        if code == 8 or "IPC not found" in stdout or "IPC window was not found" in stdout:
+            gui_exe = _find_gui_exe(exe)
+            if gui_exe:
+                try:
+                    subprocess.Popen(
+                        [str(gui_exe), "-startup", "-first-instance"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                    time.sleep(1.0)
+                    code, stdout = run_es(q)
+                except Exception:
+                    pass
+
+        if code == 0:
+            raw = stdout.splitlines()
+
+        # If filename search has no hits, try Everything's content index too.
+        if not raw and q:
+            safe_q = q.replace('"', "'")
+            content_query = f'content:"{safe_q}"'
+            code2, stdout2 = run_es(content_query)
+            if code2 == 0:
+                raw = stdout2.splitlines()
 
     out = []
     seen = set()
