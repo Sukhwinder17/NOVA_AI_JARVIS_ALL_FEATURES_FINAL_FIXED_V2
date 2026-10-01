@@ -251,10 +251,13 @@ def inbox(address: str, limit: int=25) -> list[dict[str,Any]]:
     # Never fall back to legacy password IMAP for Gmail. That old path is what
     # produced AUTHENTICATIONFAILED and defeats the passwordless OAuth design.
     if domain in ("gmail.com", "googlemail.com") and gmail is None:
-        raise RuntimeError(
-            "Gmail is not connected with Google OAuth yet. "
-            "Use 'connect email' and finish the Google sign-in."
-        )
+        item = _load().get(address.lower().strip(), {})
+        if item.get("type") != "imap_password":
+            raise RuntimeError(
+                "Gmail is not connected with Google OAuth yet. "
+                "Use 'connect email' and finish the Google sign-in, "
+                "or reconnect using a Google App Password."
+            )
     if gmail:
         result=gmail.users().messages().list(userId="me",labelIds=["INBOX"],maxResults=limit).execute()
         rows=[]
