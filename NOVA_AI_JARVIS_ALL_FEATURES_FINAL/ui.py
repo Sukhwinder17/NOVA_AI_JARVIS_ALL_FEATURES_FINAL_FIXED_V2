@@ -45,7 +45,9 @@ class Worker(threading.Thread):
             print("[NOVA UI]", exc)
 
 
-class Sphere(QWidget):
+class RobotCore(QWidget):
+    """Animated NOVA robot core rendered procedurally with Qt — no image asset required."""
+
     def __init__(self):
         super().__init__()
         self.phase = 0.0
@@ -57,7 +59,7 @@ class Sphere(QWidget):
         self.timer.start(16)
 
     def set_state(self, state):
-        self.state = state.upper()
+        self.state = str(state).upper()
         self.update()
 
     def set_amp(self, amp):
@@ -65,7 +67,7 @@ class Sphere(QWidget):
         self.update()
 
     def tick(self):
-        self.phase = (self.phase + 0.018 + 0.028 * self.amp) % math.tau
+        self.phase = (self.phase + 0.028 + 0.045 * self.amp) % math.tau
         self.amp *= 0.94
         self.update()
 
@@ -73,83 +75,200 @@ class Sphere(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
-        cx, cy = w / 2, h / 2 - 18
-        base = min(w, h) * 0.30
-        pulse = 1.0 + 0.035 * math.sin(self.phase * 2.0) + 0.05 * self.amp
+        cx = w / 2
+        bob = math.sin(self.phase * 1.25) * 4.0
+        cy = h / 2 - 8 + bob
+        scale = min(w, h) / 430.0
+        pulse = 1.0 + 0.035 * math.sin(self.phase * 2.4) + 0.07 * self.amp
 
+        # Keep the existing NOVA Core panel and give the robot its own dark stage.
         p.fillRect(self.rect(), QColor("#020308"))
 
-        # Deep-space star field.
-        random.seed(42)
-        for _ in range(180):
-            x = random.random() * w
-            y = random.random() * h
-            a = int(18 + 45 * random.random())
-            p.setPen(QPen(QColor(100, 190, 255, a), 1))
-            p.drawPoint(int(x), int(y))
+        # Soft cyan holographic aura.
+        aura = QRadialGradient(cx, cy + 25 * scale, 175 * scale)
+        aura.setColorAt(0.0, QColor(0, 220, 255, 30 + int(35 * self.amp)))
+        aura.setColorAt(0.55, QColor(40, 110, 255, 12))
+        aura.setColorAt(1.0, QColor(0, 0, 0, 0))
+        p.setBrush(QBrush(aura))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawEllipse(QRectF(cx - 175 * scale, cy - 150 * scale, 350 * scale, 350 * scale))
 
-        # Gravitational aura.
-        for mul, alpha in ((2.25, 10), (1.85, 15), (1.48, 22), (1.18, 34)):
-            rr = base * mul * pulse
-            g = QRadialGradient(cx, cy, rr)
-            g.setColorAt(0.0, QColor(0, 220, 255, alpha))
-            g.setColorAt(0.48, QColor(65, 80, 255, alpha // 2))
-            g.setColorAt(1.0, QColor(0, 0, 0, 0))
-            p.setBrush(QBrush(g))
-            p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(QRectF(cx - rr, cy - rr, rr * 2, rr * 2))
-
-        # Rotating accretion disk — flattened, luminous, black-hole-like.
-        for k in range(18):
-            a = self.phase * (1.0 if k % 2 else -0.72) + k * 0.34
-            rx = base * (0.98 + 0.12 * math.sin(a * 1.7))
-            ry = base * (0.16 + 0.045 * math.sin(a * 2.2))
-            p.save()
-            p.translate(cx, cy)
-            p.rotate(math.degrees(a))
-            p.translate(-cx, -cy)
-            pen = QPen(QColor(40, 220, 255, 24 + int(55 * self.amp)), 1.2 + (k % 3) * 0.35)
-            p.setPen(pen)
+        # Holographic floor ring.
+        ring_y = cy + 170 * scale
+        for width, alpha in ((12, 20), (6, 45), (2, 150)):
+            p.setPen(QPen(QColor(70, 235, 255, alpha), width * scale))
             p.setBrush(Qt.BrushStyle.NoBrush)
-            p.drawEllipse(QRectF(cx - rx, cy - ry, rx * 2, ry * 2))
-            p.restore()
+            p.drawEllipse(QRectF(cx - 92 * scale, ring_y - 13 * scale, 184 * scale, 28 * scale))
 
-        # Bright event horizon ring.
-        ring_r = base * (0.72 + 0.025 * math.sin(self.phase * 3.0))
-        for width, alpha in ((10, 28), (6, 60), (2, 180)):
-            pen = QPen(QColor(75, 235, 255, alpha), width)
-            p.setPen(pen)
-            p.setBrush(Qt.BrushStyle.NoBrush)
-            p.drawEllipse(QRectF(cx - ring_r, cy - ring_r * 0.42, ring_r * 2, ring_r * 0.84))
+        # Ground shadow.
+        shadow = QRadialGradient(cx, ring_y, 72 * scale)
+        shadow.setColorAt(0.0, QColor(0, 0, 0, 120))
+        shadow.setColorAt(1.0, QColor(0, 0, 0, 0))
+        p.setBrush(QBrush(shadow))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawEllipse(QRectF(cx - 90 * scale, ring_y - 18 * scale, 180 * scale, 36 * scale))
 
-        # The actual black hole.
-        hole_r = base * 0.48 * (1.0 + 0.025 * self.amp)
-        hg = QRadialGradient(cx - hole_r * 0.15, cy - hole_r * 0.12, hole_r)
-        hg.setColorAt(0.0, QColor("#000000"))
-        hg.setColorAt(0.72, QColor("#000000"))
-        hg.setColorAt(0.90, QColor(1, 7, 13, 245))
-        hg.setColorAt(1.0, QColor(0, 120, 170, 80))
-        p.setBrush(QBrush(hg))
-        p.setPen(QPen(QColor(100, 245, 255, 120), 1))
-        p.drawEllipse(QRectF(cx - hole_r, cy - hole_r, hole_r * 2, hole_r * 2))
+        # Robot proportions.
+        head_w, head_h = 170 * scale, 126 * scale
+        head_x, head_y = cx - head_w / 2, cy - 135 * scale
+        body_w, body_h = 104 * scale, 86 * scale
+        body_x, body_y = cx - body_w / 2, cy - 12 * scale
 
-        # Orbiting energy particles.
-        for k in range(14):
-            a = self.phase * (1.3 if k % 2 else -0.9) + k * (math.tau / 14)
-            rr = base * (0.78 + 0.16 * math.sin(self.phase + k))
-            x = cx + math.cos(a) * rr
-            y = cy + math.sin(a) * rr * 0.30
-            dot = 2.0 + 2.5 * self.amp
-            p.setBrush(QBrush(QColor(120, 245, 255, 120 + int(100 * self.amp))))
+        # Antenna / side ear lights.
+        for sx in (-1, 1):
+            ex = cx + sx * (head_w / 2 + 13 * scale)
+            p.setPen(QPen(QColor(255, 151, 35, 235), 9 * scale))
+            p.drawLine(QPointF(ex, head_y + 22 * scale), QPointF(ex, head_y + 82 * scale))
+            p.setPen(QPen(QColor(72, 235, 255, 190 + int(45 * self.amp)), 3 * scale))
+            p.drawLine(QPointF(ex, head_y + 24 * scale), QPointF(ex, head_y + 76 * scale))
+
+        # Head: orange toy-like shell with depth gradient.
+        head_grad = QLinearGradient(head_x, head_y, head_x, head_y + head_h)
+        head_grad.setColorAt(0.0, QColor("#ffb02e"))
+        head_grad.setColorAt(0.35, QColor("#ff8b16"))
+        head_grad.setColorAt(1.0, QColor("#d9570b"))
+        p.setBrush(QBrush(head_grad))
+        p.setPen(QPen(QColor("#ffbf45"), 2 * scale))
+        p.drawRoundedRect(QRectF(head_x, head_y, head_w, head_h), 30 * scale, 30 * scale)
+
+        # Top reflective panels.
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(QColor(255, 245, 210, 220)))
+        for i in (-1, 0, 1):
+            p.drawRoundedRect(QRectF(cx + i * 24 * scale - 8 * scale, head_y + 9 * scale,
+                                     16 * scale, 8 * scale), 3 * scale, 3 * scale)
+
+        # Face glass.
+        face_x, face_y = cx - 62 * scale, head_y + 34 * scale
+        face_w, face_h = 124 * scale, 72 * scale
+        face_grad = QLinearGradient(face_x, face_y, face_x, face_y + face_h)
+        face_grad.setColorAt(0.0, QColor("#15273a"))
+        face_grad.setColorAt(1.0, QColor("#050b13"))
+        p.setBrush(QBrush(face_grad))
+        p.setPen(QPen(QColor(35, 85, 110, 220), 1.5 * scale))
+        p.drawRoundedRect(QRectF(face_x, face_y, face_w, face_h), 19 * scale, 19 * scale)
+
+        # Subtle face scanlines.
+        p.setPen(QPen(QColor(95, 200, 235, 18), 1))
+        for y in range(int(face_y + 8 * scale), int(face_y + face_h - 4 * scale), max(3, int(4 * scale))):
+            p.drawLine(QPointF(face_x + 8 * scale, y), QPointF(face_x + face_w - 8 * scale, y))
+
+        # Eyes react differently to listening/thinking/speaking.
+        eye_y = face_y + 32 * scale
+        if self.state == "LISTENING":
+            eye_scale = 1.18 + 0.08 * math.sin(self.phase * 4)
+        elif self.state == "THINKING":
+            eye_scale = 0.82
+        else:
+            eye_scale = 1.0 + 0.04 * math.sin(self.phase * 2)
+
+        for ex in (cx - 28 * scale, cx + 28 * scale):
+            er = 10 * scale * eye_scale
+            glow = QRadialGradient(ex, eye_y, er * 2.4)
+            glow.setColorAt(0.0, QColor(210, 255, 255, 230))
+            glow.setColorAt(0.35, QColor(85, 240, 255, 190))
+            glow.setColorAt(1.0, QColor(0, 210, 255, 0))
+            p.setBrush(QBrush(glow))
             p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(QRectF(x-dot, y-dot, dot*2, dot*2))
+            p.drawEllipse(QRectF(ex - er * 2.4, eye_y - er * 2.4, er * 4.8, er * 4.8))
+            p.setBrush(QBrush(QColor("#f3ffff")))
+            p.drawEllipse(QRectF(ex - er, eye_y - er, er * 2, er * 2))
 
+        # Mouth animation: visibly moves while NOVA speaks.
+        mouth_w = 18 * scale
+        mouth_h = (4 + 18 * self.amp) * scale if self.state == "SPEAKING" else 4 * scale
+        p.setBrush(QBrush(QColor("#e8ffff")))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(QRectF(cx - mouth_w / 2, face_y + 51 * scale - mouth_h / 2,
+                                 mouth_w, mouth_h), 4 * scale, 4 * scale)
+
+        # Neck.
+        p.setBrush(QBrush(QColor("#17222a")))
+        p.drawRoundedRect(QRectF(cx - 14 * scale, head_y + head_h - 3 * scale, 28 * scale, 20 * scale),
+                          8 * scale, 8 * scale)
+
+        # Body shell.
+        body_grad = QLinearGradient(body_x, body_y, body_x, body_y + body_h)
+        body_grad.setColorAt(0.0, QColor("#ff9b1c"))
+        body_grad.setColorAt(1.0, QColor("#e7630d"))
+        p.setBrush(QBrush(body_grad))
+        p.setPen(QPen(QColor("#ffb53b"), 2 * scale))
+        p.drawRoundedRect(QRectF(body_x, body_y, body_w, body_h), 26 * scale, 26 * scale)
+
+        # Chest AI core.
+        core_r = 17 * scale * pulse
+        cg = QRadialGradient(cx, body_y + 39 * scale, core_r * 2.4)
+        cg.setColorAt(0.0, QColor(235, 255, 255, 255))
+        cg.setColorAt(0.25, QColor(60, 235, 255, 245))
+        cg.setColorAt(1.0, QColor(0, 140, 255, 0))
+        p.setBrush(QBrush(cg))
+        p.setPen(QPen(QColor(120, 250, 255, 180), 1.5 * scale))
+        p.drawEllipse(QRectF(cx - core_r, body_y + 39 * scale - core_r,
+                              core_r * 2, core_r * 2))
+
+        # Arms with segmented toy joints.
+        arm_y = body_y + 18 * scale
+        for sx in (-1, 1):
+            shoulder_x = cx + sx * 62 * scale
+            elbow_x = cx + sx * 82 * scale
+            hand_x = cx + sx * 78 * scale
+            p.setPen(QPen(QColor("#f27b12"), 23 * scale))
+            p.drawLine(QPointF(shoulder_x, arm_y), QPointF(elbow_x, arm_y + 42 * scale))
+            p.setPen(QPen(QColor("#ff9b1c"), 20 * scale))
+            p.drawLine(QPointF(elbow_x, arm_y + 42 * scale), QPointF(hand_x, arm_y + 66 * scale))
+            p.setBrush(QBrush(QColor("#17222a")))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(QRectF(elbow_x - 9 * scale, arm_y + 33 * scale,
+                                 18 * scale, 18 * scale))
+            p.setBrush(QBrush(QColor("#ff9a18")))
+            p.drawRoundedRect(QRectF(hand_x - 12 * scale, arm_y + 58 * scale,
+                                     24 * scale, 30 * scale), 10 * scale, 10 * scale)
+
+        # Waist.
+        p.setBrush(QBrush(QColor("#101920")))
+        p.drawRoundedRect(QRectF(cx - 45 * scale, body_y + body_h - 4 * scale,
+                                 90 * scale, 27 * scale), 10 * scale, 10 * scale)
+
+        # Legs.
+        leg_y = body_y + body_h + 12 * scale
+        for sx in (-1, 1):
+            lx = cx + sx * 31 * scale
+            p.setPen(QPen(QColor("#f47a0e"), 28 * scale))
+            p.drawLine(QPointF(lx, leg_y), QPointF(lx + sx * 3 * scale, leg_y + 67 * scale))
+            p.setPen(QPen(QColor("#ff9b18"), 25 * scale))
+            p.drawLine(QPointF(lx + sx * 3 * scale, leg_y + 58 * scale),
+                       QPointF(lx + sx * 5 * scale, leg_y + 91 * scale))
+            p.setBrush(QBrush(QColor("#17222a")))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(QRectF(lx - 10 * scale, leg_y + 51 * scale,
+                                 20 * scale, 20 * scale))
+            p.setBrush(QBrush(QColor("#f58a12")))
+            p.drawRoundedRect(QRectF(lx - 19 * scale, leg_y + 78 * scale,
+                                     38 * scale, 27 * scale), 11 * scale, 11 * scale)
+
+        # Small status sparks while active.
+        if self.state in ("LISTENING", "THINKING", "SPEAKING"):
+            for k in range(6):
+                a = self.phase * (1.2 + k * 0.05) + k * math.tau / 6
+                rr = 126 * scale + 8 * math.sin(self.phase * 2 + k)
+                x = cx + math.cos(a) * rr
+                y = cy + math.sin(a) * rr * 0.78
+                r = (2.0 + self.amp * 2.5) * scale
+                p.setBrush(QBrush(QColor(100, 240, 255, 130 + int(90 * self.amp))))
+                p.drawEllipse(QRectF(x-r, y-r, r*2, r*2))
+
+        # State label remains in the same place as the old sphere label.
         p.setPen(QColor("#75efff"))
         font = QFont("Segoe UI", 10)
         font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 2.2)
         p.setFont(font)
-        p.drawText(QRectF(cx - 120, cy + base * 1.38, 240, 30), Qt.AlignmentFlag.AlignCenter, self.state)
+        p.drawText(QRectF(cx - 120 * scale, cy + 194 * scale, 240 * scale, 30 * scale),
+                   Qt.AlignmentFlag.AlignCenter, self.state)
         p.end()
+
+
+# Backwards-compatible name for any external imports.
+Sphere = RobotCore
 
 
 
@@ -289,7 +408,7 @@ class NovaWindow(QMainWindow):
         reactor_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ll.addWidget(reactor_sub)
 
-        self.sphere = Sphere()
+        self.sphere = RobotCore()
         ll.addWidget(self.sphere, 1)
 
         self.activity = QLabel("SYSTEM READY")
