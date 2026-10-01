@@ -183,8 +183,15 @@ def _decode(v: str) -> str:
     return "".join(out)
 
 def _load() -> dict:
-    try: return json.loads(STORE.read_text(encoding="utf-8"))
-    except Exception: return {}
+    try:
+        return json.loads(STORE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def _save(data: dict) -> None:
+    """Persist email account metadata/tokens without ever exposing passwords in logs."""
+    STORE.parent.mkdir(parents=True, exist_ok=True)
+    STORE.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 def save_account(address: str, password: str, host: str = "", port: int = 993) -> None:
     address=address.strip()
