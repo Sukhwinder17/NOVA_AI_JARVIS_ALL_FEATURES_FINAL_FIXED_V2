@@ -38,3 +38,8 @@ pywin32; sys_platform == 'win32'
 wmi; sys_platform == 'win32'
 pywinauto; sys_platform == 'win32'
 ddgs
+
+google-api-python-client>=2.100,<3
+google-auth>=2.25,<3
+google-auth-oauthlib>=1.2,<2
+google-auth-httplib2>=0.2,<1
