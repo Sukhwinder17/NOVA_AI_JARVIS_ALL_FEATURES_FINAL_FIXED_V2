@@ -1,5 +1,5 @@
 from __future__ import annotations
-import email, imaplib, json, re, ssl
+import email, imaplib, json, re, ssl, os, webbrowser
 from email.header import decode_header
 from pathlib import Path
 from typing import Any
@@ -10,37 +10,127 @@ STORE = config.BASE_DIR / "data" / "email_accounts.json"
 
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 GMAIL_TOKEN_DIR = config.BASE_DIR / "data" / "gmail_tokens"
+GMAIL_SETUP_URL = "https://console.cloud.google.com/auth/clients"
+GMAIL_CREDENTIAL_ENV = "NOVA_GOOGLE_CREDENTIALS"
+
+def _gmail_credentials_file() -> Path | None:
+    """Find the local Desktop OAuth client JSON without ever storing it in the repo."""
+    configured = os.getenv(GMAIL_CREDENTIAL_ENV, "").strip()
+    candidates = []
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    candidates.extend([
+        config.BASE_DIR / "config" / "google_credentials.json",
+        config.BASE_DIR / "config" / "credentials.json",
+        config.BASE_DIR / "credentials.json",
+    ])
+    for path in candidates:
+        if path.exists() and path.is_file():
+            return path
+    return None
+
+def _gmail_setup_message() -> str:
+    """Open Google's official client page and return a one-time setup message."""
+    try:
+        webbrowser.open(GMAIL_SETUP_URL)
+    except Exception:
+        pass
+    return (
+        "Gmail needs a one-time Google Desktop OAuth setup. "
+        "I opened Google's OAuth Clients page. Create a Desktop app OAuth client, "
+        "download its JSON, and save it as "
+        f"{config.BASE_DIR / 'config' / 'google_credentials.json'}. "
+        "Then run 'connect email' again. Your Gmail password is never entered into NOVA."
+    )
+
+def _safe_token_name(address: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", address or "gmail")
+
+def _delete_bad_token(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 def connect_gmail_oauth(email_hint: str = "") -> str:
     try:
         from google_auth_oauthlib.flow import InstalledAppFlow
         from googleapiclient.discovery import build
     except ImportError:
-        raise RuntimeError("Install Gmail OAuth packages: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2")
-    candidates = [config.BASE_DIR / "config" / "google_credentials.json", config.BASE_DIR / "credentials.json"]
-    cred_file = next((p for p in candidates if p.exists()), None)
+        raise RuntimeError(
+            "Gmail OAuth packages are missing. Run: "
+            "pip install -r requirements.txt"
+        )
+
+    cred_file = _gmail_credentials_file()
     if not cred_file:
-        raise FileNotFoundError("Put Google Desktop OAuth credentials at config\\google_credentials.json. Google will handle sign-in; NOVA does not need your Gmail password.")
+        return _gmail_setup_message()
+
     GMAIL_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
-    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", email_hint or "gmail")
-    token_file = GMAIL_TOKEN_DIR / f"{safe}.json"
+    hint = email_hint.strip().lower()
+    token_file = GMAIL_TOKEN_DIR / f"{_safe_token_name(hint or 'gmail')}.json"
     creds = None
+
     if token_file.exists():
-        from google.oauth2.credentials import Credentials
-        creds = Credentials.from_authorized_user_file(str(token_file), GMAIL_SCOPES)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
+        try:
+            from google.oauth2.credentials import Credentials
+            creds = Credentials.from_authorized_user_file(str(token_file), GMAIL_SCOPES)
+        except Exception:
+            _delete_bad_token(token_file)
+            creds = None
+
+    if creds and creds.expired and creds.refresh_token:
+        try:
             from google.auth.transport.requests import Request
             creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(str(cred_file), GMAIL_SCOPES)
-            creds = flow.run_local_server(port=0, open_browser=True)
+        except Exception:
+            _delete_bad_token(token_file)
+            creds = None
+
+    # Reuse a valid token only if it belongs to the requested Gmail account.
+    if creds and creds.valid:
+        try:
+            from googleapiclient.discovery import build
+            service = build("gmail", "v1", credentials=creds, cache_discovery=False)
+            profile = service.users().getProfile(userId="me").execute()
+            actual = (profile.get("emailAddress") or "").strip().lower()
+            if hint and actual and actual != hint:
+                _delete_bad_token(token_file)
+                creds = None
+        except Exception:
+            _delete_bad_token(token_file)
+            creds = None
+
+    if not creds or not creds.valid:
+        flow = InstalledAppFlow.from_client_secrets_file(str(cred_file), GMAIL_SCOPES)
+        # login_hint preselects the address when Google supports it; the password
+        # remains entirely inside Google's browser page.
+        kwargs = {"open_browser": True}
+        if hint:
+            kwargs["login_hint"] = hint
+        creds = flow.run_local_server(port=0, **kwargs)
         token_file.write_text(creds.to_json(), encoding="utf-8")
+
+    from googleapiclient.discovery import build
     service = build("gmail", "v1", credentials=creds, cache_discovery=False)
     profile = service.users().getProfile(userId="me").execute()
-    address = profile.get("emailAddress") or email_hint
+    address = (profile.get("emailAddress") or email_hint).strip()
+    if not address:
+        raise RuntimeError("Google sign-in completed but Gmail did not return the account address.")
+
+    # Keep one stable token per actual Google account.
+    actual_token = GMAIL_TOKEN_DIR / f"{_safe_token_name(address)}.json"
+    if actual_token != token_file:
+        actual_token.write_text(creds.to_json(), encoding="utf-8")
+        _delete_bad_token(token_file)
+        token_file = actual_token
+
     data = _load()
-    data[address.lower()] = {"email": address, "type": "gmail_oauth", "token": str(token_file)}
+    data[address.lower()] = {
+        "email": address,
+        "type": "gmail_oauth",
+        "token": str(token_file),
+    }
     _save(data)
     return f"Connected to {address} with Google OAuth. No email password was stored."
 
@@ -49,12 +139,21 @@ def _gmail_service(address: str):
     if not item or item.get("type") != "gmail_oauth": return None
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
-    creds = Credentials.from_authorized_user_file(item["token"], GMAIL_SCOPES)
-    if creds.expired and creds.refresh_token:
-        from google.auth.transport.requests import Request
-        creds.refresh(Request())
-        Path(item["token"]).write_text(creds.to_json(), encoding="utf-8")
-    return build("gmail", "v1", credentials=creds, cache_discovery=False)
+    from google.auth.transport.requests import Request
+
+    token_path = Path(item["token"])
+    if not token_path.exists():
+        return None
+    try:
+        creds = Credentials.from_authorized_user_file(str(token_path), GMAIL_SCOPES)
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            token_path.write_text(creds.to_json(), encoding="utf-8")
+        if not creds.valid:
+            return None
+        return build("gmail", "v1", credentials=creds, cache_discovery=False)
+    except Exception:
+        return None
 
 def _gmail_text(payload):
     import base64
