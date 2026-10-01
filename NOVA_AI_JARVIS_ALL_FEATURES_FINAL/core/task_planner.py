@@ -286,7 +286,7 @@ class TaskPlanner:
         # ----------------------------------------------------
         # 4. NUMBERED LEARNING LINKS ("open link 2")
         # ----------------------------------------------------
-        m_link = re.fullmatch(r"(?:open|go to|launch)\\s+(?:link|resource|website)\\s+(\\d+)", low)
+        m_link = re.fullmatch(r"(?:open|go to|launch)\s+(?:link|resource|website)\s+(\d+)", low)
         if m_link:
             item = self.task_manager.resolve_link_ref(m_link.group(1))
             if item:
@@ -347,7 +347,7 @@ class TaskPlanner:
                 res = self.orchestrator._run("learning_resources", {"topic": topic or "DSA", "open_in_browser": False})
                 urls = []
                 seen = set()
-                for url in re.findall(r"https?://\\S+", str(res)):
+                for url in re.findall(r"https?://\S+", str(res)):
                     url = url.rstrip(").,;")
                     if url not in seen:
                         seen.add(url)
