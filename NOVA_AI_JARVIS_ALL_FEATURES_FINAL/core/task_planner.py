@@ -284,7 +284,35 @@ class TaskPlanner:
                         return format_whatsapp_confirmation(task, self.task_manager, self.orchestrator), "local"
 
         # ----------------------------------------------------
-        # 4. STANDALONE FILE SELECTION (E.G. USER SAYS "3" OR "FILE 3")
+        # 4. NUMBERED LEARNING LINKS ("open link 2")
+        # ----------------------------------------------------
+        m_link = re.fullmatch(r"(?:open|go to|launch)\\s+(?:link|resource|website)\\s+(\\d+)", low)
+        if m_link:
+            item = self.task_manager.resolve_link_ref(m_link.group(1))
+            if item:
+                url = item.get("url", "")
+                try:
+                    import webbrowser
+                    webbrowser.open(url)
+                    return f"Opened link {m_link.group(1)}: {item.get('name', url)}", "local"
+                except Exception as exc:
+                    return f"I found the link but could not open it: {exc}", "local"
+            return "I don't have a numbered learning link with that number yet. Ask me for learning resources first.", "local"
+
+        # Also accept just "2" immediately after a learning-resource list.
+        if low.isdigit() and self.task_manager.last_links:
+            item = self.task_manager.resolve_link_ref(low)
+            if item:
+                url = item.get("url", "")
+                try:
+                    import webbrowser
+                    webbrowser.open(url)
+                    return f"Opened link {low}: {item.get('name', url)}", "local"
+                except Exception as exc:
+                    return f"I found the link but could not open it: {exc}", "local"
+
+        # ----------------------------------------------------
+        # 5. STANDALONE FILE SELECTION (E.G. USER SAYS "3" OR "FILE 3")
         # ----------------------------------------------------
         m_num = re.fullmatch(r"(?:open\s+|file\s+|result\s+|#\s*)?(\d+)", low)
         if m_num or (low.isdigit() and len(low) <= 3):
@@ -317,6 +345,17 @@ class TaskPlanner:
             if topic:
                 topic = re.sub(r"\b(?:give\s+me|youtube|channels?|resources?|roadmap|tutorials?)\b", "", topic).strip()
                 res = self.orchestrator._run("learning_resources", {"topic": topic or "DSA", "open_in_browser": False})
+                urls = []
+                seen = set()
+                for url in re.findall(r"https?://\\S+", str(res)):
+                    url = url.rstrip(").,;")
+                    if url not in seen:
+                        seen.add(url)
+                        urls.append(url)
+                self.task_manager.set_links([
+                    {"name": f"Learning resource {i}", "url": url}
+                    for i, url in enumerate(urls, 1)
+                ])
                 return res, "local"
 
         # ----------------------------------------------------
