@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from threading import Lock
+from threading import RLock
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 HISTORY_PATH = BASE_DIR / "memory" / "conversation_history.json"
 MAX_MESSAGES = 120
-_lock = Lock()
+_lock = RLock()
 
 
 def load_history(limit: int = MAX_MESSAGES) -> list[dict]:
