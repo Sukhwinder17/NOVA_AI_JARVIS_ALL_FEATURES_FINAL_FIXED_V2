@@ -4,6 +4,7 @@ import atexit
 import ctypes
 import threading
 import time
+from pathlib import Path
 
 from core import config
 
@@ -276,7 +277,7 @@ def _send_text(message):
     return True
 
 
-def _whatsapp_web(receiver: str, message: str) -> str:
+def _whatsapp_web(receiver: str, message: str, attachment_path: str | None = None) -> str:
     """
     Send a WhatsApp message through the user's existing Chrome.
 
