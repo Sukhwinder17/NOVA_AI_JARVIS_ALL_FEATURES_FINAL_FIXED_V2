@@ -528,8 +528,10 @@ class TaskPlanner:
                 search_res = run_attachment_search(file_target, task, self.task_manager)
                 return f"I've initiated the request to send the file to {recipient}.\n\n{search_res}", "local"
 
-            # Plain file search
-            q = self.orchestrator._clean_search_query(t) or t
+            # Plain file search. For "find my gradient descent files",
+            # Everything must receive only "gradient descent".
+            exact = re.search(r"\bmy\s+(.+?)\s+files?\b", t, re.I)
+            q = exact.group(1).strip() if exact else (self.orchestrator._clean_search_query(t) or t)
             res = self.orchestrator._run("everything_file_finder", {"action": "search", "query": q, "limit": 40})
             self.orchestrator._last_files = True
             # Cache rows in task manager as well
