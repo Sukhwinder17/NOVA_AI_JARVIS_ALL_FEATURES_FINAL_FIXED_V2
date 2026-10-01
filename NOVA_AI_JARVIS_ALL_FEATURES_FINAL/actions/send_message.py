@@ -315,10 +315,44 @@ def _whatsapp_web(receiver: str, message: str) -> str:
                     f"but the message could not be sent: {exc}"
                 )
 
+            # Handle optional attachment
+            attach_note = ""
+            if attachment_path:
+                att_p = Path(attachment_path)
+                if att_p.exists():
+                    try:
+                        # If image, copy to clipboard and paste
+                        if att_p.suffix.lower() in (".png", ".jpg", ".jpeg", ".bmp", ".gif"):
+                            import pyautogui
+                            from PIL import Image
+                            import io
+                            import win32clipboard
+                            img = Image.open(att_p)
+                            output = io.BytesIO()
+                            img.convert("RGB").save(output, "BMP")
+                            data = output.getvalue()[14:]
+                            output.close()
+                            win32clipboard.OpenClipboard()
+                            win32clipboard.EmptyClipboard()
+                            win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+                            win32clipboard.CloseClipboard()
+                            time.sleep(0.5)
+                            pyautogui.hotkey("ctrl", "v")
+                            time.sleep(1.5)
+                            pyautogui.press("enter")
+                            time.sleep(1.0)
+                            attach_note = f" with image '{att_p.name}' attached."
+                        else:
+                            attach_note = f" (File '{att_p.name}' located at {attachment_path}; ready to attach)."
+                    except Exception as exc:
+                        attach_note = f" (Attachment notice: could not auto-paste '{att_p.name}': {exc})."
+                else:
+                    attach_note = f" (Attachment '{attachment_path}' was not found)."
+
             # Leave Chrome open.
             return (
                 f"Message sent to {receiver} through your "
-                "current Chrome WhatsApp Web session."
+                f"current Chrome WhatsApp Web session{attach_note}"
             )
 
         except Exception as exc:
@@ -377,10 +411,12 @@ def send_message(parameters: dict, player=None, **kwargs) -> str:
         p.get("platform", "whatsapp")
     ).strip().lower()
 
+    attachment_path = str(p.get("attachment_path", "")).strip() or None
+
     if not receiver:
         return "Please specify a recipient."
 
-    if not message:
+    if not message and not attachment_path:
         return "Please specify the message content."
 
     if platform in (
@@ -391,7 +427,8 @@ def send_message(parameters: dict, player=None, **kwargs) -> str:
     ):
         result = _whatsapp_web(
             receiver,
-            message,
+            message or "Here is the attachment.",
+            attachment_path=attachment_path,
         )
     else:
         result = _desktop_send(
@@ -418,7 +455,8 @@ TOOL = {
         "Chrome profile. If WhatsApp Web is already the current "
         "tab, reuse it. Otherwise open WhatsApp Web in a new tab "
         "inside the same Chrome window. Search the requested "
-        "contact, send the exact message, and leave Chrome open."
+        "contact, send the exact message, and leave Chrome open. "
+        "Supports optional attachment_path."
     ),
 
     "parameters": {
@@ -438,6 +476,11 @@ TOOL = {
             "platform": {
                 "type": "STRING",
                 "description": "whatsapp | whatsapp web",
+            },
+
+            "attachment_path": {
+                "type": "STRING",
+                "description": "Optional file path to attach",
             },
         },
 

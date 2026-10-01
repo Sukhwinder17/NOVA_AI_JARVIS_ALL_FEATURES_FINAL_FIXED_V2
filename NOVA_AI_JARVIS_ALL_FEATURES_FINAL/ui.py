@@ -307,6 +307,12 @@ class NovaWindow(QMainWindow):
         self.input.returnPressed.connect(self.send)
         row.addWidget(self.input, 1)
 
+        self.attach_btn = QPushButton("📎")
+        self.attach_btn.setObjectName("attachButton")
+        self.attach_btn.setToolTip("Attach a file from your PC to the current task")
+        self.attach_btn.clicked.connect(self.select_attachment)
+        row.addWidget(self.attach_btn)
+
         self.listen = QPushButton("◉  LISTEN")
         self.listen.setObjectName("listenButton")
         self.listen.clicked.connect(self.toggle_listen)
@@ -501,6 +507,11 @@ class NovaWindow(QMainWindow):
             border-color: #1f8baa;
             color: #bafaff;
         }
+        #attachButton {
+            min-width: 36px;
+            font-size: 13px;
+            padding: 8px 10px;
+        }
         #sendButton:hover { background: #0e465b; }
         """
 
@@ -607,6 +618,14 @@ class NovaWindow(QMainWindow):
             self.activity.setText(f"{provider.upper()} RESPONSE")
         if provider != "error":
             self.speak_text(reply)
+
+    def select_attachment(self):
+        from PyQt6.QtWidgets import QFileDialog
+        from pathlib import Path
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select File to Attach to NOVA Task", "", "All Files (*.*)")
+        if file_path:
+            self.orchestrator.set_attachment(file_path)
+            self.add_message("SYSTEM", f"📎 Attached: {Path(file_path).name}\nPath: {file_path}")
 
     def toggle_listen(self):
         if self.listening:

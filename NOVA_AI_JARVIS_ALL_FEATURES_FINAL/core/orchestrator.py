@@ -6,6 +6,8 @@ import threading
 from .action_loader import discover_actions
 from .plugin_loader import discover_plugins
 from .llm_router import LLMRouter
+from .task_state import TaskManager
+from .task_planner import TaskPlanner
 from . import config
 from memory.memory_manager import load_memory, format_memory_for_prompt
 
@@ -23,10 +25,15 @@ class NovaOrchestrator:
         except Exception:
             self.plugins = None
         self.router = LLMRouter(self.registry)
+        self.task_manager = TaskManager()
+        self.planner = TaskPlanner(self)
         self.history = []
         self._last_provider = ""
         self._lock = threading.Lock()
         self._last_files = False
+
+    def set_attachment(self, file_path: str):
+        self.task_manager.set_attachment(file_path)
 
     def _log(self, msg):
         print("[NOVA]", msg)
@@ -73,6 +80,11 @@ class NovaOrchestrator:
         # Diagnostics / feature health check
         if re.fullmatch(r"(?:check|test|diagnose|scan)\s+(?:nova\s+)?(?:features?|systems?|capabilities?)", low):
             return self._run("feature_diagnostics", {})
+
+        # Natural Language Task Planning & Orchestration layer
+        planned = self.planner.handle_natural_input(t)
+        if planned is not None:
+            return planned[0]
 
         # WhatsApp message commands MUST be handled before generic open-app routing.
         patterns = [

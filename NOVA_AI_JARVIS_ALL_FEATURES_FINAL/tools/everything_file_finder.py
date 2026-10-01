@@ -28,13 +28,42 @@ def _clean(path):
     return p
 
 
+def _fallback_search(query: str, limit: int = 40) -> list[str]:
+    terms = [w.lower() for w in query.split() if w]
+    found = []
+    seen = set()
+
+    search_roots = [
+        Path.home() / "Documents",
+        Path.home() / "Downloads",
+        Path.home() / "Desktop",
+        Path.cwd(),
+    ]
+
+    for root in search_roots:
+        if not root.exists():
+            continue
+        try:
+            # Walk top-level and subdirectories (depth 3)
+            for path in root.rglob("*"):
+                if path.is_file():
+                    name_lower = path.name.lower()
+                    if all(term in name_lower for term in terms):
+                        full_str = str(path.resolve())
+                        if full_str.lower() not in seen:
+                            seen.add(full_str.lower())
+                            found.append(full_str)
+                            if len(found) >= limit:
+                                return found
+        except Exception:
+            continue
+    return found
+
+
 def search(query: str, limit: int = 40):
     global _last
 
     exe = Path(config.EVERYTHING_EXE)
-
-    if not exe.exists():
-        return [], f"Everything CLI was not found at {exe}"
 
     # Clean natural-language commands
     q = query.strip()
@@ -53,22 +82,25 @@ def search(query: str, limit: int = 40):
     if not q:
         q = query.strip()
 
-    try:
-        # Use the same basic Everything command that was
-        # verified to work from CMD.
-        result = subprocess.run(
-            [str(exe), q],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=15,
-        )
+    raw = []
+    if exe.exists():
+        try:
+            result = subprocess.run(
+                [str(exe), q],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10,
+            )
+            stdout = result.stdout or ""
+            if result.returncode == 0 and "IPC not found" not in stdout and "Error" not in stdout:
+                raw = stdout.splitlines()
+        except Exception:
+            pass
 
-        raw = (result.stdout or "").splitlines()
-
-    except Exception as e:
-        return [], f"Everything search failed: {e}"
+    if not raw:
+        raw = _fallback_search(q, limit=limit)
 
     out = []
     seen = set()
