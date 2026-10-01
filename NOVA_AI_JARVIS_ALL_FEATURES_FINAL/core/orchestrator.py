@@ -10,6 +10,7 @@ from .task_state import TaskManager
 from .task_planner import TaskPlanner
 from . import config
 from memory.memory_manager import load_memory, format_memory_for_prompt
+from memory.conversation_history import load_history, append_message
 
 
 class NovaOrchestrator:
@@ -27,7 +28,7 @@ class NovaOrchestrator:
         self.router = LLMRouter(self.registry)
         self.task_manager = TaskManager()
         self.planner = TaskPlanner(self)
-        self.history = []
+        self.history = load_history(40)
         self._last_provider = ""
         self._lock = threading.Lock()
         self._last_files = False
@@ -183,15 +184,28 @@ class NovaOrchestrator:
         return None
 
     def handle(self, text: str, provider: str | None = None):
+        text = str(text or "").strip()
+        if not text:
+            return "", "local"
+
         direct = self._direct(text)
         if direct is not None:
             if direct == "__LISTEN__":
-                return "Listening.", "local"
-            if direct == "__STOP_LISTEN__":
-                return "Stopped listening.", "local"
-            if direct == "__STOP_SPEAKING__":
-                return "Stopped speaking.", "local"
-            return direct, "local"
+                reply, used = "Listening.", "local"
+            elif direct == "__STOP_LISTEN__":
+                reply, used = "Stopped listening.", "local"
+            elif direct == "__STOP_SPEAKING__":
+                reply, used = "Stopped speaking.", "local"
+            else:
+                reply, used = str(direct), "local"
+            self.history.extend([
+                {"role": "user", "content": text},
+                {"role": "assistant", "content": reply},
+            ])
+            self.history = self.history[-40:]
+            append_message("user", text)
+            append_message("assistant", reply)
+            return reply, used
 
         memory = load_memory()
         reply, used = self.router.run(
@@ -201,6 +215,11 @@ class NovaOrchestrator:
             provider,
         )
         self._last_provider = used
-        self.history.append({"role": "user", "content": text})
-        self.history.append({"role": "assistant", "content": reply})
+        self.history.extend([
+            {"role": "user", "content": text},
+            {"role": "assistant", "content": reply},
+        ])
+        self.history = self.history[-40:]
+        append_message("user", text)
+        append_message("assistant", reply)
         return reply, used
