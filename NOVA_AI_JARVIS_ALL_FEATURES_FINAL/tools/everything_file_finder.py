@@ -140,8 +140,16 @@ def search(query: str, limit: int = 40):
             args = [str(es_cli)]
             if instance:
                 args += ["-instance", instance]
-            # Filename-only search. -match-path is compatible with ES 1.4/1.5.
-            args += ["-n", str(limit), "/a-d", "-match-path", search_query]
+            # Use explicit -search and wait for the Everything database to be
+            # ready. ES can otherwise return an empty result immediately after
+            # Everything starts even though the GUI already shows the files.
+            args += [
+                "-n", str(limit),
+                "/a-d",
+                "-match-path",
+                "-timeout", "10000",
+                "-search", search_query,
+            ]
             result = subprocess.run(
                 args,
                 capture_output=True,
@@ -180,7 +188,7 @@ def search(query: str, limit: int = 40):
                         stderr=subprocess.DEVNULL,
                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                     )
-                    time.sleep(1.5)
+                    time.sleep(2.5)
                     for instance in ("1.5a", None):
                         code, stdout = run_es(q, instance)
                         if code == 0:
