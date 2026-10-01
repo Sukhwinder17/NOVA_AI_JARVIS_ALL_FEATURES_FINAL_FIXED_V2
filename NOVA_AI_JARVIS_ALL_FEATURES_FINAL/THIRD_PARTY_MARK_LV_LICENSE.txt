@@ -1,0 +1,3 @@
+This NOVA AI distribution incorporates source code adapted from the uploaded
+MARK LV / Mark-LV project by FatihMakes. The original project license is
+preserved in LICENSE. See LICENSE for the applicable terms and attribution.
