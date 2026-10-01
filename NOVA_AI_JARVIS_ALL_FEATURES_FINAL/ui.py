@@ -845,21 +845,13 @@ class NovaWindow(QMainWindow):
             address, ok = QInputDialog.getText(self, "Connect Email", "Email address:")
             if not ok or not address.strip():
                 return
-            password, ok = QInputDialog.getText(
-                self, "Email App Password",
-                "Provider app-password (NOT your normal account password):",
-                QLineEdit.EchoMode.Password
-            )
-            if not ok or not password:
-                return
-            self.add_message("NOVA", f"Connecting {address.strip()} securely…")
+            self.add_message("NOVA", f"Opening secure Google sign-in for {address.strip()}…")
             self.set_state("THINKING")
             def email_work():
                 try:
                     reply = self.orchestrator._run("email_manager", {
                         "action": "connect",
                         "email": address.strip(),
-                        "password": password,
                     })
                 except Exception as exc:
                     reply = f"Email connection failed: {exc}"
