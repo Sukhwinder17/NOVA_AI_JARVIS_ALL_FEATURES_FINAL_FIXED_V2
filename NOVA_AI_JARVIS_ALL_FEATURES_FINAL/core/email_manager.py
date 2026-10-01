@@ -108,7 +108,12 @@ def connect_gmail_oauth(email_hint: str = "") -> str:
         kwargs = {"open_browser": True}
         if hint:
             kwargs["login_hint"] = hint
-        creds = flow.run_local_server(port=0, **kwargs)
+        creds = flow.run_local_server(
+            host="127.0.0.1",
+            bind_addr="127.0.0.1",
+            port=0,
+            **kwargs,
+        )
         token_file.write_text(creds.to_json(), encoding="utf-8")
 
     from googleapiclient.discovery import build
