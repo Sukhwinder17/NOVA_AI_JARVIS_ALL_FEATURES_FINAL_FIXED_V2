@@ -1,17 +1,24 @@
 from __future__ import annotations
-from core.email_manager import accounts, inbox, save_account, summarize
+from core.email_manager import accounts, inbox, save_account, summarize, connect_gmail_oauth
 
 def email_manager(parameters: dict, player=None, **kwargs) -> str:
     p=parameters or {}; action=str(p.get("action","summary")).lower().strip()
     account=str(p.get("account","")).strip()
     if action=="connect":
-        address=str(p.get("email",account)).strip(); password=str(p.get("password",""))
-        if not address or not password: return "Email connection needs an address and provider app-password."
+        address=str(p.get("email",account)).strip()
+        if not address: return "Tell me the email address to connect."
         try:
+            if address.lower().endswith(("@gmail.com","@googlemail.com")):
+                return connect_gmail_oauth(address)
+            password=str(p.get("password",""))
+            if not password:
+                return "For this provider, NOVA needs its OAuth connection or an app-password. Gmail now connects without a password."
             save_account(address,password,str(p.get("imap_host","")).strip())
             inbox(address,1)
-            return f"✅ Connected {address}. I can now analyze its inbox."
-        except Exception as exc: return f"Could not connect {address}: {exc}"
+            return f"Connected to {address}."
+        except Exception as exc:
+            return f"Could not connect {address}: {exc}"
+
     if action=="accounts":
         xs=accounts(); return "Connected email accounts:\n"+("\n".join("• "+x for x in xs) if xs else "No accounts connected.")
     if not account:
