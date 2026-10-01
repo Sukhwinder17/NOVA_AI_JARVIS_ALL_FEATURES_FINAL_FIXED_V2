@@ -33,6 +33,7 @@ class SignalBus(QObject):
     state = pyqtSignal(str)
     error = pyqtSignal(str)
     voice_text = pyqtSignal(str)
+    email_retry = pyqtSignal(str, str)
 
 
 class Worker(threading.Thread):
@@ -572,6 +573,7 @@ class NovaWindow(QMainWindow):
         self.bus.reply.connect(self.on_reply)
         self.bus.state.connect(self.on_state)
         self.bus.voice_text.connect(self.on_voice_text)
+        self.bus.email_retry.connect(self.on_email_retry)
 
         try:
             from core.tts_nova import NovaTTS
@@ -845,18 +847,7 @@ class NovaWindow(QMainWindow):
             address, ok = QInputDialog.getText(self, "Connect Email", "Email address:")
             if not ok or not address.strip():
                 return
-            self.add_message("NOVA", f"Opening secure Google sign-in for {address.strip()}…")
-            self.set_state("THINKING")
-            def email_work():
-                try:
-                    reply = self.orchestrator._run("email_manager", {
-                        "action": "connect",
-                        "email": address.strip(),
-                    })
-                except Exception as exc:
-                    reply = f"Email connection failed: {exc}"
-                self.bus.reply.emit(str(reply), "local")
-            Worker(email_work).start()
+            self._begin_email_connect(address.strip())
             return
 
         self.sphere.set_expression("CURIOUS")
@@ -872,6 +863,52 @@ class NovaWindow(QMainWindow):
             self.bus.reply.emit(str(reply), str(used))
 
         Worker(work).start()
+
+    def _begin_email_connect(self, address, password=None):
+        """Connect email without putting the password into NOVA chat/history."""
+        if password is None:
+            password, ok = QInputDialog.getText(
+                self,
+                "Email Password",
+                "Password / Google App Password:",
+                QLineEdit.EchoMode.Password,
+            )
+            if not ok or not password:
+                return
+        self.add_message("NOVA", f"Connecting {address} securely…")
+        self.set_state("THINKING")
+
+        def email_work():
+            try:
+                reply = self.orchestrator._run("email_manager", {
+                    "action": "connect",
+                    "email": address,
+                    "password": password,
+                })
+            except Exception as exc:
+                reply = f"Email connection failed: {exc}"
+            reply = str(reply)
+            if reply.lower().startswith("connected to "):
+                self.bus.reply.emit(reply, "local")
+            else:
+                self.bus.email_retry.emit(address, reply)
+
+        Worker(email_work).start()
+
+    def on_email_retry(self, address, error):
+        """Ask again when credentials are rejected; never echo the password."""
+        self.set_state("READY")
+        password, ok = QInputDialog.getText(
+            self,
+            "Email Login Failed",
+            f"{error}\n\nRe-enter password / Google App Password:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not ok or not password:
+            self.add_message("NOVA", "Email connection cancelled.")
+            return
+        self.add_message("NOVA", f"Retrying {address}…")
+        self._begin_email_connect(address, password)
 
     def on_reply(self, reply, provider):
         self.add_message("NOVA", reply)
