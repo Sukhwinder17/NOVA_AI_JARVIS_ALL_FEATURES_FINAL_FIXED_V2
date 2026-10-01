@@ -23,6 +23,8 @@ from PyQt6.QtWidgets import (
     QFrame,
     QComboBox,
     QSizePolicy,
+    QInputDialog,
+    QLineEdit,
 )
 
 
@@ -837,6 +839,32 @@ class NovaWindow(QMainWindow):
         if low in ("stop speaking", "be quiet", "shut up"):
             self.stop_speaking()
             self.add_message("NOVA", "Stopped speaking.")
+            return
+
+        if low in ("connect email", "connect my email", "add email", "connect an email"):
+            address, ok = QInputDialog.getText(self, "Connect Email", "Email address:")
+            if not ok or not address.strip():
+                return
+            password, ok = QInputDialog.getText(
+                self, "Email App Password",
+                "Provider app-password (NOT your normal account password):",
+                QLineEdit.EchoMode.Password
+            )
+            if not ok or not password:
+                return
+            self.add_message("NOVA", f"Connecting {address.strip()} securely…")
+            self.set_state("THINKING")
+            def email_work():
+                try:
+                    reply = self.orchestrator._run("email_manager", {
+                        "action": "connect",
+                        "email": address.strip(),
+                        "password": password,
+                    })
+                except Exception as exc:
+                    reply = f"Email connection failed: {exc}"
+                self.bus.reply.emit(str(reply), "local")
+            Worker(email_work).start()
             return
 
         self.sphere.set_expression("CURIOUS")
