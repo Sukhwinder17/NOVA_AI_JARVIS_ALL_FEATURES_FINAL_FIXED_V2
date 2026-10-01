@@ -3,11 +3,13 @@ from __future__ import annotations
 import math
 import random
 import threading
+import html
+import re
 
 from memory.conversation_history import load_history
 
-from PyQt6.QtCore import Qt, QTimer, QRectF, pyqtSignal, QObject
-from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QRadialGradient, QFont, QLinearGradient
+from PyQt6.QtCore import Qt, QTimer, QRectF, pyqtSignal, QObject, QUrl
+from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QRadialGradient, QFont, QLinearGradient, QDesktopServices
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -163,11 +165,49 @@ class ChatBubble(QFrame):
         header.setObjectName("bubbleWho")
         layout.addWidget(header)
 
-        body = QLabel(str(text))
-        body.setWordWrap(True)
-        body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        body.setObjectName("bubbleBody")
-        layout.addWidget(body)
+        self.body = QLabel()
+        self.body.setWordWrap(True)
+        self.body.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextBrowserInteraction
+        )
+        self.body.setOpenExternalLinks(False)
+        self.body.linkActivated.connect(self.open_link)
+        self.body.setObjectName("bubbleBody")
+        self.set_body(str(text))
+        layout.addWidget(self.body)
+
+    def set_body(self, text):
+        """Render URLs and numbered Windows file results as clickable links."""
+        lines = str(text).splitlines()
+        rendered = []
+
+        for line in lines:
+            # NOVA file results: "01. C:\path\filename.pdf"
+            m = re.match(r"^(\s*\d+\.\s+)([A-Za-z]:\\.*)$", line)
+            if m:
+                prefix = html.escape(m.group(1))
+                path = m.group(2).strip()
+                name = path.replace("\\", "/").rsplit("/", 1)[-1]
+                href = QUrl.fromLocalFile(path).toString()
+                rendered.append(
+                    prefix
+                    + f'<a href="{html.escape(href, quote=True)}">{html.escape(name)}</a>'
+                )
+                continue
+
+            # Clickable web URLs anywhere in a NOVA response.
+            safe = html.escape(line)
+            safe = re.sub(
+                r"(https?://[^\s<]+)",
+                lambda m: f'<a href="{html.escape(m.group(1), quote=True)}">{html.escape(m.group(1))}</a>',
+                safe,
+            )
+            rendered.append(safe)
+
+        self.body.setText("<br>".join(rendered))
+
+    def open_link(self, url):
+        QDesktopServices.openUrl(QUrl(url))
 
 
 class CommandChip(QPushButton):
