@@ -60,6 +60,31 @@ def _fallback_search(query: str, limit: int = 40) -> list[str]:
     return found
 
 
+def _find_gui_exe(es_exe: Path) -> Path | None:
+    candidates = [
+        es_exe.with_name('Everything.exe'),
+        es_exe.with_name('Everything64.exe'),
+        Path(os.environ.get('ProgramFiles', '')) / 'Everything' / 'Everything.exe',
+        Path(os.environ.get('ProgramFiles', '')) / 'Everything' / 'Everything64.exe',
+        Path(os.environ.get('ProgramFiles(x86)', '')) / 'Everything' / 'Everything.exe',
+        Path(os.environ.get('ProgramFiles(x86)', '')) / 'Everything' / 'Everything64.exe',
+    ]
+    for candidate in candidates:
+        try:
+            if candidate.exists(): return candidate
+        except Exception: pass
+    return None
+
+def show_everything_search(query: str) -> bool:
+    es_exe = Path(config.EVERYTHING_EXE)
+    gui_exe = _find_gui_exe(es_exe)
+    if not gui_exe: return False
+    try:
+        subprocess.Popen([str(gui_exe), '-search', query], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        return True
+    except Exception:
+        return False
+
 def search(query: str, limit: int = 40):
     global _last
 
@@ -82,6 +107,8 @@ def search(query: str, limit: int = 40):
     if not q:
         q = query.strip()
 
+    show_everything_search(q)
+
     raw = []
     if exe.exists():
         try:
@@ -91,7 +118,7 @@ def search(query: str, limit: int = 40):
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=10,
+                timeout=4,
             )
             stdout = result.stdout or ""
             if result.returncode == 0 and "IPC not found" not in stdout and "Error" not in stdout:
@@ -99,8 +126,9 @@ def search(query: str, limit: int = 40):
         except Exception:
             pass
 
+    # Everything is the authoritative whole-PC index; avoid recursive filesystem walks.
     if not raw:
-        raw = _fallback_search(q, limit=limit)
+        raw = []
 
     out = []
     seen = set()
