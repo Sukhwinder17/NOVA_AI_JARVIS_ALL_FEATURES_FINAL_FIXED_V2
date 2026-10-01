@@ -50,6 +50,7 @@ class NovaOrchestrator:
                 "speak": getattr(self.ui, "speak_text", None),
                 "response": None,
                 "session_memory": load_memory(),
+                "task_manager": self.task_manager,
             },
         )
 
