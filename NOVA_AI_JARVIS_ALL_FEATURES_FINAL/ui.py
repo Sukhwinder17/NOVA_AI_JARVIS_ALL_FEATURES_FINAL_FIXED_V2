@@ -190,36 +190,31 @@ class NovaWindow(QMainWindow):
         self._tts = None
 
         self.setWindowTitle("NOVA AI")
-        self.resize(1500, 940)
-        self.setMinimumSize(1180, 760)
+        self.resize(1420, 900)
+        self.setMinimumSize(1120, 720)
         self.setStyleSheet(self.css())
 
         root = QWidget()
         root.setObjectName("root")
         self.setCentralWidget(root)
         main = QVBoxLayout(root)
-        main.setContentsMargins(22, 18, 22, 18)
-        main.setSpacing(12)
+        main.setContentsMargins(24, 18, 24, 20)
+        main.setSpacing(14)
 
+        # ---------------- HEADER ----------------
         header = QHBoxLayout()
-        header.setSpacing(14)
-        hello = QVBoxLayout()
-        hello.setSpacing(0)
-        greeting = QLabel("HELLO,")
-        greeting.setObjectName("greeting")
-        hello.addWidget(greeting)
-        name = QLabel("SUKHWINDER")
-        name.setObjectName("heroName")
-        hello.addWidget(name)
-        sub = QLabel("PERSONAL AI • LOCAL CONTROL • LIVE ACTIONS")
-        sub.setObjectName("brandSub")
-        hello.addWidget(sub)
-        header.addLayout(hello)
-        header.addStretch()
+        header.setSpacing(12)
 
-        brand = QLabel("N O V A")
+        brand_box = QVBoxLayout()
+        brand_box.setSpacing(0)
+        brand = QLabel("◉ NOVA AI")
         brand.setObjectName("brand")
-        header.addWidget(brand)
+        brand_box.addWidget(brand)
+        sub = QLabel("PERSONAL INTELLIGENCE  •  LOCAL CONTROL  •  LIVE ACTIONS")
+        sub.setObjectName("brandSub")
+        brand_box.addWidget(sub)
+        header.addLayout(brand_box)
+        header.addStretch()
 
         self.status = QLabel("● READY")
         self.status.setObjectName("status")
@@ -228,137 +223,65 @@ class NovaWindow(QMainWindow):
         self.provider = QComboBox()
         self.provider.addItems(["AUTO", "GROQ", "GEMINI", "XKIRO"])
         self.provider.setToolTip("AI provider used for conversation and tool decisions")
-        self.provider.setFixedWidth(118)
+        self.provider.setFixedWidth(132)
         header.addWidget(self.provider)
         main.addLayout(header)
 
-        stage = QHBoxLayout()
-        stage.setSpacing(14)
-        main.addLayout(stage, 5)
+        # ---------------- MAIN ----------------
+        content = QHBoxLayout()
+        content.setSpacing(16)
+        main.addLayout(content, 1)
 
+        # Left reactor panel.
         left = QFrame()
-        left.setObjectName("hudPanel")
+        left.setObjectName("reactorPanel")
         ll = QVBoxLayout(left)
-        ll.setContentsMargins(16, 18, 16, 16)
-        ll.setSpacing(9)
+        ll.setContentsMargins(12, 12, 12, 14)
+        ll.setSpacing(8)
 
-        leftTitle = QLabel("NOVA")
-        leftTitle.setObjectName("sideTitle")
-        ll.addWidget(leftTitle)
-        leftSub = QLabel("YOUR AI ASSISTANT")
-        leftSub.setObjectName("sideSub")
-        ll.addWidget(leftSub)
+        reactor_title = QLabel("NOVA CORE")
+        reactor_title.setObjectName("panelTitle")
+        reactor_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ll.addWidget(reactor_title)
 
-        def hud_button(label, icon, command):
-            b = QPushButton(f"{icon}   {label}   ›")
-            b.setObjectName("hudButton")
-            b.clicked.connect(lambda checked=False, c=command: self.run_quick(c))
-            ll.addWidget(b)
-
-        hud_button("SEARCH FILES", "⌕", "find my files")
-        hud_button("OPEN APPS", "▦", "show my apps")
-        hud_button("WEB SEARCH", "◎", "open google")
-        hud_button("ANALYZE DATA", "▥", "open datalens")
-        hud_button("CREATE / GENERATE", "✦", "help me create something")
-        hud_button("SYSTEM CONTROL", "⚙", "check nova features")
-
-        ll.addStretch()
-        mic = QLabel("◉  〰〰〰〰〰〰  ◉")
-        mic.setObjectName("wave")
-        mic.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ll.addWidget(mic)
-        listenText = QLabel("VOICE READY")
-        listenText.setObjectName("sideSub")
-        listenText.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ll.addWidget(listenText)
-        stage.addWidget(left, 22)
-
-        center = QFrame()
-        center.setObjectName("corePanel")
-        cl = QVBoxLayout(center)
-        cl.setContentsMargins(10, 8, 10, 8)
-        cl.setSpacing(2)
-
-        coreTop = QLabel("NOVA CORE")
-        coreTop.setObjectName("coreTitle")
-        coreTop.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        cl.addWidget(coreTop)
-        coreSub = QLabel("SMARTER • FASTER • ALWAYS WITH YOU")
-        coreSub.setObjectName("coreSub")
-        coreSub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        cl.addWidget(coreSub)
+        reactor_sub = QLabel("LOCAL DESKTOP AGENT")
+        reactor_sub.setObjectName("panelSub")
+        reactor_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ll.addWidget(reactor_sub)
 
         self.sphere = Sphere()
-        cl.addWidget(self.sphere, 1)
+        ll.addWidget(self.sphere, 1)
 
         self.activity = QLabel("SYSTEM READY")
         self.activity.setObjectName("activity")
         self.activity.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        cl.addWidget(self.activity)
-        stage.addWidget(center, 56)
+        ll.addWidget(self.activity)
 
+        hints = QLabel(
+            "Find files  •  Open apps  •  Browser control\n"
+            "Messages  •  Screen vision  •  Voice  •  DataLens"
+        )
+        hints.setObjectName("hints")
+        hints.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ll.addWidget(hints)
+        content.addWidget(left, 44)
+
+        # Right conversation panel.
         right = QFrame()
-        right.setObjectName("hudPanel")
+        right.setObjectName("conversationPanel")
         rl = QVBoxLayout(right)
-        rl.setContentsMargins(16, 18, 16, 16)
+        rl.setContentsMargins(18, 16, 18, 16)
         rl.setSpacing(10)
 
-        sysTitle = QLabel("SYSTEM STATUS")
-        sysTitle.setObjectName("sideTitle")
-        rl.addWidget(sysTitle)
-
-        stats = QHBoxLayout()
-        for label, value in (("CPU", "—"), ("RAM", "—"), ("GPU", "—")):
-            box = QFrame()
-            box.setObjectName("statBox")
-            bl = QVBoxLayout(box)
-            bl.setContentsMargins(7, 8, 7, 8)
-            bl.setSpacing(1)
-            v = QLabel(value)
-            v.setObjectName("statValue")
-            v.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            bl.addWidget(v)
-            t = QLabel(label)
-            t.setObjectName("statLabel")
-            t.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            bl.addWidget(t)
-            stats.addWidget(box)
-        rl.addLayout(stats)
-
-        qa = QLabel("QUICK ACTIONS")
-        qa.setObjectName("sideTitle")
-        rl.addWidget(qa)
-        for label, icon, command in [
-            ("Find my file", "⌕", "find my files"),
-            ("Summarize this", "≡", "summarize this"),
-            ("Create a report", "▤", "create a report"),
-            ("Open YouTube", "▶", "open youtube"),
-            ("Take a screenshot", "▣", "take a screenshot"),
-            ("DataLens", "◈", "open datalens"),
-        ]:
-            b = QPushButton(f"{icon}   {label}   ›")
-            b.setObjectName("actionButton")
-            b.clicked.connect(lambda checked=False, c=command: self.run_quick(c))
-            rl.addWidget(b)
-
-        rl.addStretch()
-        stage.addWidget(right, 22)
-
-        chatDock = QFrame()
-        chatDock.setObjectName("chatDock")
-        dl = QVBoxLayout(chatDock)
-        dl.setContentsMargins(14, 10, 14, 10)
-        dl.setSpacing(8)
-
         top = QHBoxLayout()
-        title = QLabel("LIVE COMMAND CHANNEL")
+        title = QLabel("CONVERSATION")
         title.setObjectName("section")
         top.addWidget(title)
         top.addStretch()
-        hint = QLabel("FILE RESULTS APPEAR HERE • NO EXTRA EVERYTHING WINDOW")
-        hint.setObjectName("liveLabel")
-        top.addWidget(hint)
-        dl.addLayout(top)
+        live = QLabel("LIVE COMMAND CHANNEL")
+        live.setObjectName("liveLabel")
+        top.addWidget(live)
+        rl.addLayout(top)
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
@@ -368,14 +291,33 @@ class NovaWindow(QMainWindow):
         self.chat = QVBoxLayout(holder)
         self.chat.setContentsMargins(2, 2, 4, 2)
         self.chat.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.chat.setSpacing(8)
+        self.chat.setSpacing(9)
         self.scroll.setWidget(holder)
-        dl.addWidget(self.scroll, 1)
+        rl.addWidget(self.scroll, 1)
 
+        # Quick command strip.
+        quick_title = QLabel("QUICK COMMANDS")
+        quick_title.setObjectName("quickTitle")
+        rl.addWidget(quick_title)
+        chips = QHBoxLayout()
+        chips.setSpacing(7)
+        for label, command in [
+            ("FILES", "find my DataLens files"),
+            ("YOUTUBE", "open youtube"),
+            ("DATALENS", "open datalens"),
+            ("WHATSAPP", "open whatsapp"),
+            ("VISION", "explain this screen"),
+            ("CHECK", "check nova features"),
+        ]:
+            chip = CommandChip(label, lambda checked=False, c=command: self.run_quick(c))
+            chips.addWidget(chip)
+        rl.addLayout(chips)
+
+        # Composer.
         row = QHBoxLayout()
         row.setSpacing(8)
         self.input = QLineEdit()
-        self.input.setPlaceholderText("Talk to NOVA — e.g.  find my gradient descent files  •  open Blender  •  send hi")
+        self.input.setPlaceholderText("Talk to NOVA — e.g.  open Blender  •  find my DataLens files  •  send hi to Sukhwinder")
         self.input.returnPressed.connect(self.send)
         row.addWidget(self.input, 1)
 
@@ -394,19 +336,25 @@ class NovaWindow(QMainWindow):
         send.setObjectName("sendButton")
         send.clicked.connect(self.send)
         row.addWidget(send)
-        dl.addLayout(row)
+        rl.addLayout(row)
 
-        self.quick = QLabel("Say “find my gradient descent files” → NOVA instantly shows the matching file list here. Then say “open 2”.")
+        self.quick = QLabel(
+            "CTRL+SPACE  push-to-talk   •   SAY “listen” / “stop listening”   •   “open 3” opens a file result   •   “check features” runs a safe health check"
+        )
         self.quick.setObjectName("quick")
-        dl.addWidget(self.quick)
-        main.addWidget(chatDock, 2)
+        rl.addWidget(self.quick)
+
+        content.addWidget(right, 56)
 
         previous = load_history(24)
         if previous:
             for item in previous:
                 self.add_message("YOU" if item["role"] == "user" else "NOVA", item["content"])
         else:
-            self.add_message("NOVA", "Hello. I’m NOVA. Tell me what you want done — find a file, open an app, control the browser, send a message, analyze your screen, or just chat.")
+            self.add_message(
+                "NOVA",
+                "Hello. I’m NOVA. Tell me what you want done — open an app, find a file, control the browser, send a message, analyze your screen, or just chat.",
+            )
 
         self.bus.reply.connect(self.on_reply)
         self.bus.state.connect(self.on_state)
@@ -423,130 +371,168 @@ class NovaWindow(QMainWindow):
     def css(self):
         return """
         QMainWindow, QWidget#root {
-            background: #02050a;
+            background: #03070c;
             color: #d9f8ff;
             font-family: "Segoe UI";
         }
-        #greeting { color: #d7f8ff; font-size: 17px; font-weight: 500; letter-spacing: 1px; }
-        #heroName { color: #e8fdff; font-size: 25px; font-weight: 800; letter-spacing: 1px; }
-        #brandSub { color: #4c879c; font-size: 8px; letter-spacing: 1.7px; margin-top: 3px; }
-        #brand { color: #c9faff; font-size: 29px; font-weight: 700; letter-spacing: 8px; padding: 4px 18px; }
+        #brand {
+            font-size: 27px;
+            font-weight: 750;
+            color: #c4fbff;
+            letter-spacing: 2px;
+        }
+        #brandSub {
+            color: #4c8498;
+            font-size: 9px;
+            letter-spacing: 1.8px;
+            margin-top: 2px;
+        }
         #status {
-            color: #61ffc4; font-size: 10px; font-weight: 800; letter-spacing: 1px;
-            padding: 8px 12px; border: 1px solid #164f4a; border-radius: 12px; background: #061714;
+            color: #58ffbd;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            padding: 8px 12px;
+            border: 1px solid #164d48;
+            border-radius: 12px;
+            background: #061714;
         }
         QComboBox {
-            background: #07131c; border: 1px solid #1b5368; border-radius: 10px;
-            padding: 8px 10px; color: #aaf5ff; font-size: 10px; font-weight: 700;
+            background: #07131c;
+            border: 1px solid #1b5368;
+            border-radius: 10px;
+            padding: 8px 11px;
+            color: #aaf5ff;
+            font-size: 11px;
+            font-weight: 700;
         }
         QComboBox:hover { border-color: #27dfff; }
-        #hudPanel, #corePanel, #chatDock {
-            background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #06101a, stop:0.52 #040a12, stop:1 #07141d);
-            border: 1px solid #12394d; border-radius: 22px;
+        #reactorPanel, #conversationPanel {
+            background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #061019, stop:0.55 #050b12, stop:1 #07131b);
+            border: 1px solid #12394b;
+            border-radius: 24px;
         }
-        #corePanel { border-color: #18506a; }
-        #sideTitle { color: #c9f7ff; font-size: 10px; font-weight: 800; letter-spacing: 1.7px; }
-        #sideSub { color: #4b8295; font-size: 8px; letter-spacing: 1.6px; }
-        #coreTitle { color: #72ecff; font-size: 11px; font-weight: 800; letter-spacing: 3px; margin-top: 2px; }
-        #coreSub { color: #3c7287; font-size: 7px; letter-spacing: 2px; }
-        #activity { color: #67ecff; font-size: 9px; letter-spacing: 2px; font-weight: 800; }
-        #wave { color: #55cfff; font-size: 18px; padding: 9px; border-top: 1px solid #123a4c; }
-        #hudButton, #actionButton {
-            text-align: left; background: #07131c; border: 1px solid #143f54; border-radius: 13px;
-            padding: 11px 10px; color: #b9efff; font-size: 9px; font-weight: 700;
+        #reactorPanel {
+            border-color: #104358;
         }
-        #hudButton:hover, #actionButton:hover { background: #0b2535; border-color: #27dfff; color: #eaffff; }
-        #statBox { background: #06121c; border: 1px solid #123f54; border-radius: 14px; }
-        #statValue { color: #64eaff; font-size: 15px; font-weight: 800; }
-        #statLabel { color: #4a8192; font-size: 7px; letter-spacing: 1px; }
-        #section { color: #6deaff; font-size: 10px; font-weight: 800; letter-spacing: 2px; }
+        #panelTitle {
+            color: #68eaff;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 3px;
+        }
+        #panelSub {
+            color: #3c7186;
+            font-size: 8px;
+            letter-spacing: 2px;
+        }
+        #activity {
+            color: #68eaff;
+            font-size: 10px;
+            letter-spacing: 2px;
+            font-weight: 700;
+        }
+        #hints {
+            color: #476d7d;
+            font-size: 9px;
+            line-height: 1.7;
+        }
+        #section {
+            color: #67eaff;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 2.4px;
+        }
         #liveLabel {
-            color: #3e8296; font-size: 7px; letter-spacing: 1px; padding: 5px 8px;
-            border: 1px solid #123d4e; border-radius: 8px;
+            color: #39788b;
+            font-size: 8px;
+            letter-spacing: 1.5px;
+            padding: 5px 9px;
+            border: 1px solid #123d4e;
+            border-radius: 8px;
         }
-        #quick { color: #416f80; font-size: 8px; }
+        #quickTitle {
+            color: #3e7e92;
+            font-size: 8px;
+            letter-spacing: 1.8px;
+            font-weight: 700;
+        }
+        #quick {
+            color: #3c6575;
+            font-size: 8px;
+            padding-left: 2px;
+        }
         QScrollArea { background: transparent; border: none; }
-        QScrollBar:vertical { width: 5px; background: transparent; }
-        QScrollBar::handle:vertical { background: #174b60; border-radius: 3px; min-height: 30px; }
-        #bubbleNova, #bubbleUser, #fileResults { border-radius: 13px; padding: 1px; }
-        #bubbleNova { background: #07131c; border: 1px solid #123d50; }
-        #bubbleUser { background: #081a22; border: 1px solid #145269; }
-        #bubbleWho { color: #54e8ff; font-size: 7px; font-weight: 800; letter-spacing: 1.8px; }
-        #bubbleBody { color: #d6f6ff; font-size: 11px; line-height: 1.4; }
-        #fileResults { background: #07151e; border: 1px solid #176078; }
-        #fileHeader { color: #70ecff; font-size: 9px; font-weight: 800; letter-spacing: 1.5px; }
-        #fileQuery { color: #4f8ca0; font-size: 8px; }
-        #fileRow {
-            background: #07131c; border: 1px solid #113b4c; border-radius: 9px; color: #bcefff;
-            text-align: left; padding: 8px 10px; font-size: 9px;
+        QScrollBar:vertical {
+            width: 6px;
+            background: transparent;
         }
-        #fileRow:hover { background: #0b2938; border-color: #27dfff; }
+        QScrollBar::handle:vertical {
+            background: #174b60;
+            border-radius: 3px;
+            min-height: 35px;
+        }
+        #bubbleNova, #bubbleUser {
+            border-radius: 15px;
+            padding: 1px;
+        }
+        #bubbleNova {
+            background: #07131c;
+            border: 1px solid #123d50;
+        }
+        #bubbleUser {
+            background: #081a22;
+            border: 1px solid #145269;
+        }
+        #bubbleWho {
+            color: #54e8ff;
+            font-size: 8px;
+            font-weight: 800;
+            letter-spacing: 1.8px;
+        }
+        #bubbleBody {
+            color: #d6f6ff;
+            font-size: 12px;
+            line-height: 1.45;
+        }
         QLineEdit {
-            background: #06131c; border: 1px solid #155066; border-radius: 14px;
-            padding: 12px 15px; color: #e7fdff; font-size: 12px;
+            background: #06131c;
+            border: 1px solid #155066;
+            border-radius: 14px;
+            padding: 12px 15px;
+            color: #e7fdff;
+            font-size: 13px;
         }
         QLineEdit:focus { border: 1px solid #20dfff; }
         QPushButton {
-            background: #081b25; border: 1px solid #164d62; border-radius: 10px;
-            padding: 9px 11px; color: #8feeff; font-weight: 750; font-size: 9px; letter-spacing: 1px;
+            background: #081b25;
+            border: 1px solid #164d62;
+            border-radius: 10px;
+            padding: 9px 11px;
+            color: #8feeff;
+            font-weight: 750;
+            font-size: 9px;
+            letter-spacing: 1px;
         }
-        QPushButton:hover { background: #0b2a39; border-color: #26dfff; }
+        QPushButton:hover {
+            background: #0b2a39;
+            border-color: #26dfff;
+        }
         QPushButton:pressed { background: #0c3b4e; }
         #listenButton { min-width: 92px; }
-        #sendButton { min-width: 92px; background: #0b3141; border-color: #1f8baa; color: #bafaff; }
-        #attachButton { min-width: 36px; font-size: 13px; padding: 8px 10px; }
+        #sendButton {
+            min-width: 92px;
+            background: #0b3141;
+            border-color: #1f8baa;
+            color: #bafaff;
+        }
+        #attachButton {
+            min-width: 36px;
+            font-size: 13px;
+            padding: 8px 10px;
+        }
         #sendButton:hover { background: #0e465b; }
         """
-    
-    def add_file_results(self, reply):
-        import re
-        lines = str(reply).splitlines()
-        matches = []
-        query = ""
-        for line in lines:
-            m = re.match(r"^\s*(\d+)\.\s+(.+)$", line)
-            if m:
-                matches.append((int(m.group(1)), m.group(2).strip()))
-            elif line.lower().startswith("found ") and " for: " in line.lower():
-                query = line.split(" for: ", 1)[-1].strip()
-
-        if not matches:
-            self.add_message("NOVA", reply)
-            return
-
-        card = QFrame()
-        card.setObjectName("fileResults")
-        outer = QVBoxLayout(card)
-        outer.setContentsMargins(12, 10, 12, 10)
-        outer.setSpacing(7)
-
-        header = QLabel(f"⌕  FILE SEARCH  •  {len(matches)} RESULTS")
-        header.setObjectName("fileHeader")
-        outer.addWidget(header)
-
-        if query:
-            ql = QLabel(f"Search: {query}")
-            ql.setObjectName("fileQuery")
-            outer.addWidget(ql)
-
-        for number, path in matches:
-            label = path if len(path) <= 125 else "…" + path[-124:]
-            b = QPushButton(f"{number:02d}   {label}")
-            b.setObjectName("fileRow")
-            b.setToolTip(path)
-            b.clicked.connect(lambda checked=False, n=number: self.open_file_result(n))
-            outer.addWidget(b)
-
-        footer = QLabel("Click a result to open it  •  or say “open 2”")
-        footer.setObjectName("fileQuery")
-        outer.addWidget(footer)
-
-        self.chat.addWidget(card)
-        QTimer.singleShot(20, lambda: self.scroll.verticalScrollBar().setValue(self.scroll.verticalScrollBar().maximum()))
-
-    def open_file_result(self, number):
-        self.input.setText(f"open {number}")
-        self.send()
 
     def add_message(self, who, text):
         bubble = ChatBubble(who, text)
@@ -641,16 +627,12 @@ class NovaWindow(QMainWindow):
         Worker(work).start()
 
     def on_reply(self, reply, provider):
-        text = str(reply)
-        if "Found " in text and any(line.lstrip()[:2].isdigit() and ". " in line[:8] for line in text.splitlines()):
-            self.add_file_results(text)
-        else:
-            self.add_message("NOVA", text)
+        self.add_message("NOVA", reply)
         self.set_state("READY")
         if provider and provider not in ("local", "error"):
             self.activity.setText(f"{provider.upper()} RESPONSE")
         if provider != "error":
-            self.speak_text(text)
+            self.speak_text(reply)
 
     def select_attachment(self):
         from PyQt6.QtWidgets import QFileDialog
