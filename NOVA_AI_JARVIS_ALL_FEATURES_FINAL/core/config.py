@@ -22,7 +22,7 @@ XKIRO_MODEL = os.getenv('XKIRO_MODEL', 'mistralai/mistral-large-2512').strip()
 
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '').strip()
 GEMINI_BASE_URL = os.getenv('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/').strip()
-GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash').strip()
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.8-flash').strip()
 
 DATALENS_URL = os.getenv('DATALENS_URL', 'https://frontend-liard-rho-s59bfvv4uq.vercel.app').strip()
 EVERYTHING_EXE = os.getenv('EVERYTHING_EXE', str(BASE_DIR / 'tools' / 'bin' / 'es.exe')).strip()
