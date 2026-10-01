@@ -168,7 +168,7 @@ def learning_resources(parameters: dict, player=None, **kwargs) -> str:
     seen_urls = set()
     import re
     for line in result.splitlines():
-        urls = re.findall(r"https?://\\S+", line)
+        urls = re.findall(r"https?://\S+", line)
         if urls:
             clean_urls = []
             for url in urls:
@@ -181,7 +181,7 @@ def learning_resources(parameters: dict, player=None, **kwargs) -> str:
                 prefix = " ".join(f"[LINK {n}]" for n, _ in clean_urls)
                 line = prefix + " " + line
         numbered_lines.append(line)
-    result = "\\n".join(numbered_lines)
+    result = "\n".join(numbered_lines)
 
     if player and hasattr(player, "write_log"):
         player.write_log(f"[learning] Guide prepared for {topic}")
