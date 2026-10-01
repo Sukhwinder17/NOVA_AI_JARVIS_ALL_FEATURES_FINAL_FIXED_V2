@@ -163,7 +163,13 @@ class NovaOrchestrator:
             r"\b(?:file|files|pdf|project|document|folder|python|code|dataset|image|video|filename|file\s+name)\b",
             low,
         ):
-            q = self._clean_search_query(t)
+            # For natural commands like "find my gradient descent files",
+            # Everything must receive only the filename phrase between "my" and "files".
+            exact = re.search(r"\bmy\s+(.+?)\s+files?\b", t, re.I)
+            if exact:
+                q = exact.group(1).strip()
+            else:
+                q = self._clean_search_query(t)
             if not q:
                 q = t
             result = self._run("everything_file_finder", {
