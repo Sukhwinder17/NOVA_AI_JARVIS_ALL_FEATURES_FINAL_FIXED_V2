@@ -1,5 +1,5 @@
 from __future__ import annotations
-from core.email_manager import accounts, inbox, save_account, summarize, connect_gmail_oauth
+from core.email_manager import accounts, inbox, save_account, summarize, connect_gmail_oauth, _load, _save
 
 def email_manager(parameters: dict, player=None, **kwargs) -> str:
     p=parameters or {}; action=str(p.get("action","summary")).lower().strip()
@@ -15,9 +15,9 @@ def email_manager(parameters: dict, player=None, **kwargs) -> str:
             if password:
                 host = str(p.get("imap_host", "")).strip()
                 save_account(address, password, host)
-                item = __import__("core.email_manager", fromlist=["_load"])._load()
+                item = _load()
                 item[address.lower()]["type"] = "imap_password"
-                __import__("core.email_manager", fromlist=["_save"])._save(item)
+                _save(item)
                 inbox(address, 1)  # validate BEFORE reporting success
                 return f"Connected to {address}."
             if address.lower().endswith(("@gmail.com","@googlemail.com")):
