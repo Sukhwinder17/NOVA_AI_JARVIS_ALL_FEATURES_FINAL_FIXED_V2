@@ -155,20 +155,23 @@ def search(query: str, limit: int = 40):
         except Exception:
             return -1, ""
 
-    if exe.exists():
-        # Everything 1.5 alpha uses a separate IPC instance. Try it first,
-        # then fall back to the normal instance.
-        attempts = [("1.5a", None), (None, None)]
-        for instance, _ in attempts:
+    # Do NOT gate the search on config.EVERYTHING_EXE existing. The config
+    # normally points to NOVA's bundled es.exe, while Everything may actually
+    # be installed under Program Files\Everything 1.5a.
+    if es_cli.exists():
+        # Everything 1.5a uses a named IPC instance. Try it first, then the
+        # unnamed instance for installations with alpha_instance disabled.
+        for instance in ("1.5a", None):
             code, stdout = run_es(q, instance)
             if code == 0:
                 raw = stdout.splitlines()
-                break
+                if raw:
+                    break
 
         # If Everything is not running, start it silently and retry.
         # -startup is documented to run Everything without opening a search window.
         if not raw:
-            gui_exe = _find_gui_exe(exe)
+            gui_exe = _find_gui_exe(es_cli)
             if gui_exe:
                 try:
                     subprocess.Popen(
