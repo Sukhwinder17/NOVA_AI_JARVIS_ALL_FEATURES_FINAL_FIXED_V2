@@ -10,6 +10,9 @@ def everything_file_finder(parameters: dict, player=None, **kwargs) -> str:
     query=str(p.get('query','')).strip()
     limit=max(5,min(100,int(p.get('limit',40) or 40)))
     rows, cleaned=search(query,limit)
+    task_manager = kwargs.get('task_manager')
+    if task_manager is not None and hasattr(task_manager, 'set_file_results'):
+        task_manager.set_file_results(rows)
     if not rows: return f'No relevant files found for: {cleaned}'
     lines=[f'Found {len(rows)} relevant file(s) for: {cleaned}']
     lines += [f'{i:02d}. {p}' for i,p in enumerate(rows,1)]
