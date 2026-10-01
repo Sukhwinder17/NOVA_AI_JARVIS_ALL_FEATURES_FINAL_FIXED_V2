@@ -83,6 +83,20 @@ class NovaOrchestrator:
         if re.fullmatch(r"(?:check|test|diagnose|scan)\s+(?:nova\s+)?(?:features?|systems?|capabilities?)", low):
             return self._run("feature_diagnostics", {})
 
+        # Email intelligence commands.
+        if re.search(r"\b(?:check|show|scan|read|summarize|review)\b", low) and re.search(r"\b(?:email|emails|inbox|mail)\b", low):
+            if re.search(r"\b(?:important|urgent|assignment|work)\b", low):
+                return self._run("email_manager", {"action": "important"})
+            if re.search(r"\b(?:deadline|deadlines|due)\b", low):
+                return self._run("email_manager", {"action": "deadlines"})
+            return self._run("email_manager", {"action": "summary", "limit": 30})
+
+        if re.search(r"\b(?:connect|link|add)\b", low) and re.search(r"\b(?:email|gmail|outlook|yahoo|mail)\b", low):
+            return "Email connection is ready. Use 'connect email' and NOVA will securely ask for the email address and provider app-password without putting the password in chat."
+
+        if re.fullmatch(r"(?:email|mail)\s+(?:accounts?|connected)", low):
+            return self._run("email_manager", {"action": "accounts"})
+
         # Natural Language Task Planning & Orchestration layer
         # Handle PC file searches before the task planner.
         if re.search(r"\b(?:find|search|locate|look for|show me)\b", low) and re.search(r"\b(?:file|files|pdf|project|document|folder|python|code|dataset|image|video|filename|file\s+name)\b", low):
