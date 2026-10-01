@@ -53,13 +53,21 @@ class RobotCore(QWidget):
         self.phase = 0.0
         self.amp = 0.0
         self.state = "READY"
+        self.expression = "NEUTRAL"
+        self.blink = 0.0
         self.setMinimumSize(390, 390)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
-        self.timer.start(16)
+        self.timer.start(33)
 
     def set_state(self, state):
         self.state = str(state).upper()
+        self.update()
+
+    def set_expression(self, expression):
+        value = str(expression).upper().strip()
+        allowed = {"NEUTRAL", "HAPPY", "CURIOUS", "CONFUSED", "ALERT", "SAD"}
+        self.expression = value if value in allowed else "NEUTRAL"
         self.update()
 
     def set_amp(self, amp):
@@ -67,8 +75,11 @@ class RobotCore(QWidget):
         self.update()
 
     def tick(self):
-        self.phase = (self.phase + 0.028 + 0.045 * self.amp) % math.tau
-        self.amp *= 0.94
+        self.phase = (self.phase + 0.055 + 0.085 * self.amp) % math.tau
+        self.amp *= 0.90
+        # Natural periodic blink without adding another timer.
+        blink_cycle = self.phase % 5.8
+        self.blink = max(0.0, 1.0 - abs(blink_cycle - 5.45) / 0.16) if blink_cycle > 5.29 else 0.0
         self.update()
 
     def paintEvent(self, event):
@@ -76,7 +87,8 @@ class RobotCore(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
         cx = w / 2
-        bob = math.sin(self.phase * 1.25) * 4.0
+        bob = math.sin(self.phase * 1.65) * 6.0
+        sway = math.sin(self.phase * 0.82) * 3.0
         cy = h / 2 - 8 + bob
         scale = min(w, h) / 430.0
         pulse = 1.0 + 0.035 * math.sin(self.phase * 2.4) + 0.07 * self.amp
@@ -110,7 +122,7 @@ class RobotCore(QWidget):
 
         # Robot proportions.
         head_w, head_h = 170 * scale, 126 * scale
-        head_x, head_y = cx - head_w / 2, cy - 135 * scale
+        head_x, head_y = cx - head_w / 2 + sway, cy - 135 * scale
         body_w, body_h = 104 * scale, 86 * scale
         body_x, body_y = cx - body_w / 2, cy - 12 * scale
 
@@ -150,36 +162,67 @@ class RobotCore(QWidget):
 
         # Subtle face scanlines.
         p.setPen(QPen(QColor(95, 200, 235, 18), 1))
-        for y in range(int(face_y + 8 * scale), int(face_y + face_h - 4 * scale), max(3, int(4 * scale))):
+        for y in range(int(face_y + 8 * scale), int(face_y + face_h - 4 * scale), max(5, int(6 * scale))):
             p.drawLine(QPointF(face_x + 8 * scale, y), QPointF(face_x + face_w - 8 * scale, y))
 
-        # Eyes react differently to listening/thinking/speaking.
+        # Expressive eyes: blink + state/emotion driven poses.
         eye_y = face_y + 32 * scale
         if self.state == "LISTENING":
-            eye_scale = 1.18 + 0.08 * math.sin(self.phase * 4)
+            eye_scale = 1.12 + 0.10 * math.sin(self.phase * 4)
         elif self.state == "THINKING":
-            eye_scale = 0.82
+            eye_scale = 0.84
+        elif self.expression == "HAPPY":
+            eye_scale = 0.92
+        elif self.expression == "CURIOUS":
+            eye_scale = 1.06 + 0.04 * math.sin(self.phase * 2)
+        elif self.expression == "CONFUSED":
+            eye_scale = 0.90
+        elif self.expression == "ALERT":
+            eye_scale = 1.18
         else:
-            eye_scale = 1.0 + 0.04 * math.sin(self.phase * 2)
+            eye_scale = 1.0 + 0.035 * math.sin(self.phase * 2)
 
-        for ex in (cx - 28 * scale, cx + 28 * scale):
+        # Blink is a fast vertical squeeze.
+        eye_y_scale = max(0.08, 1.0 - self.blink * 0.92)
+        for idx, ex in enumerate((cx - 28 * scale + sway * 0.15, cx + 28 * scale + sway * 0.15)):
             er = 10 * scale * eye_scale
-            glow = QRadialGradient(ex, eye_y, er * 2.4)
-            glow.setColorAt(0.0, QColor(210, 255, 255, 230))
-            glow.setColorAt(0.35, QColor(85, 240, 255, 190))
+            if self.expression == "SAD":
+                eye_y_pos = eye_y + 3 * scale
+            elif self.expression == "CURIOUS" and idx == 1:
+                eye_y_pos = eye_y - 2 * scale
+            else:
+                eye_y_pos = eye_y
+
+            glow = QRadialGradient(ex, eye_y_pos, er * 1.8)
+            glow.setColorAt(0.0, QColor(220, 255, 255, 235))
+            glow.setColorAt(0.45, QColor(80, 240, 255, 160))
             glow.setColorAt(1.0, QColor(0, 210, 255, 0))
             p.setBrush(QBrush(glow))
             p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(QRectF(ex - er * 2.4, eye_y - er * 2.4, er * 4.8, er * 4.8))
-            p.setBrush(QBrush(QColor("#f3ffff")))
-            p.drawEllipse(QRectF(ex - er, eye_y - er, er * 2, er * 2))
+            p.drawEllipse(QRectF(ex - er * 1.8, eye_y_pos - er * 1.8,
+                                 er * 3.6, er * 3.6))
 
-        # Mouth animation: visibly moves while NOVA speaks.
+            p.setBrush(QBrush(QColor("#f3ffff")))
+            p.drawEllipse(QRectF(ex - er, eye_y_pos - er * eye_y_scale,
+                                 er * 2, er * 2 * eye_y_scale))
+
+        # Animated expressive mouth.
         mouth_w = 18 * scale
-        mouth_h = (4 + 18 * self.amp) * scale if self.state == "SPEAKING" else 4 * scale
+        if self.state == "SPEAKING":
+            mouth_h = (4 + 20 * (0.5 + 0.5 * math.sin(self.phase * 7))) * scale
+        elif self.expression == "HAPPY":
+            mouth_w, mouth_h = 22 * scale, 7 * scale
+        elif self.expression == "CONFUSED":
+            mouth_w, mouth_h = 13 * scale, 4 * scale
+        elif self.expression == "SAD":
+            mouth_w, mouth_h = 16 * scale, 3 * scale
+        else:
+            mouth_h = 4 * scale
+
         p.setBrush(QBrush(QColor("#e8ffff")))
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(QRectF(cx - mouth_w / 2, face_y + 51 * scale - mouth_h / 2,
+        p.drawRoundedRect(QRectF(cx - mouth_w / 2 + sway * 0.1,
+                                 face_y + 51 * scale - mouth_h / 2,
                                  mouth_w, mouth_h), 4 * scale, 4 * scale)
 
         # Neck.
@@ -206,22 +249,28 @@ class RobotCore(QWidget):
         p.drawEllipse(QRectF(cx - core_r, body_y + 39 * scale - core_r,
                               core_r * 2, core_r * 2))
 
-        # Arms with segmented toy joints.
+        # Arms: gentle idle sway; active expressions get more personality.
         arm_y = body_y + 18 * scale
         for sx in (-1, 1):
             shoulder_x = cx + sx * 62 * scale
+            wave = 0.0
+            if self.expression == "HAPPY" and sx > 0:
+                wave = math.sin(self.phase * 3.0) * 14 * scale
+            elif self.state == "LISTENING":
+                wave = math.sin(self.phase * 2.0) * 5 * scale
             elbow_x = cx + sx * 82 * scale
             hand_x = cx + sx * 78 * scale
             p.setPen(QPen(QColor("#f27b12"), 23 * scale))
-            p.drawLine(QPointF(shoulder_x, arm_y), QPointF(elbow_x, arm_y + 42 * scale))
+            p.drawLine(QPointF(shoulder_x, arm_y), QPointF(elbow_x, arm_y + 42 * scale + wave))
             p.setPen(QPen(QColor("#ff9b1c"), 20 * scale))
-            p.drawLine(QPointF(elbow_x, arm_y + 42 * scale), QPointF(hand_x, arm_y + 66 * scale))
+            p.drawLine(QPointF(elbow_x, arm_y + 42 * scale + wave),
+                       QPointF(hand_x, arm_y + 66 * scale + wave))
             p.setBrush(QBrush(QColor("#17222a")))
             p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(QRectF(elbow_x - 9 * scale, arm_y + 33 * scale,
+            p.drawEllipse(QRectF(elbow_x - 9 * scale, arm_y + 33 * scale + wave,
                                  18 * scale, 18 * scale))
             p.setBrush(QBrush(QColor("#ff9a18")))
-            p.drawRoundedRect(QRectF(hand_x - 12 * scale, arm_y + 58 * scale,
+            p.drawRoundedRect(QRectF(hand_x - 12 * scale, arm_y + 58 * scale + wave,
                                      24 * scale, 30 * scale), 10 * scale, 10 * scale)
 
         # Waist.
@@ -248,7 +297,7 @@ class RobotCore(QWidget):
 
         # Small status sparks while active.
         if self.state in ("LISTENING", "THINKING", "SPEAKING"):
-            for k in range(6):
+            for k in range(4):
                 a = self.phase * (1.2 + k * 0.05) + k * math.tau / 6
                 rr = 126 * scale + 8 * math.sin(self.phase * 2 + k)
                 x = cx + math.cos(a) * rr
@@ -301,27 +350,30 @@ class ChatBubble(QFrame):
         rendered = []
 
         for line in lines:
-            # NOVA file results: "01. C:\path\filename.pdf"
+            # NOVA file results: "01. C:\\path\\filename.pdf"
             m = re.match(r"^(\s*\d+\.\s+)([A-Za-z]:\\.*)$", line)
             if m:
-                prefix = html.escape(m.group(1))
+                prefix = html.escape(m.group(1), quote=False)
                 path = m.group(2).strip()
                 name = path.replace("\\", "/").rsplit("/", 1)[-1]
                 href = QUrl.fromLocalFile(path).toString()
                 rendered.append(
                     prefix
-                    + f'<a href="{html.escape(href, quote=True)}">{html.escape(name)}</a>'
+                    + f'<a href="{html.escape(href, quote=True)}">{html.escape(name, quote=False)}</a>'
                 )
                 continue
 
-            # Clickable web URLs anywhere in a NOVA response.
-            safe = html.escape(line)
-            safe = re.sub(
-                r"(https?://[^\s<]+)",
-                lambda m: f'<a href="{html.escape(m.group(1), quote=True)}">{html.escape(m.group(1))}</a>',
-                safe,
-            )
-            rendered.append(safe)
+            # Split raw text first so normal apostrophes/quotes stay normal.
+            parts = re.split(r"(https?://[^\s<]+)", str(line))
+            out = []
+            for part in parts:
+                if re.match(r"^https?://", part):
+                    out.append(
+                        f'<a href="{html.escape(part, quote=True)}">{html.escape(part, quote=False)}</a>'
+                    )
+                else:
+                    out.append(html.escape(part, quote=False))
+            rendered.append("".join(out))
 
         self.body.setText("<br>".join(rendered))
 
@@ -731,6 +783,21 @@ class NovaWindow(QMainWindow):
     def on_state(self, state):
         self.set_state(state)
 
+    def set_expression_from_text(self, text):
+        """Choose a lightweight visual emotion from NOVA's response text."""
+        t = str(text).lower()
+        if any(x in t for x in ("error", "failed", "couldn't", "cannot", "unable", "warning")):
+            expr = "ALERT"
+        elif any(x in t for x in ("sorry", "sad", "unfortunately")):
+            expr = "SAD"
+        elif any(x in t for x in ("?", "which", "what", "why", "how")):
+            expr = "CURIOUS"
+        elif any(x in t for x in ("great", "done", "success", "hello", "hi ", "hey ", "opened", "found")):
+            expr = "HAPPY"
+        else:
+            expr = "NEUTRAL"
+        self.sphere.set_expression(expr)
+
     def set_speaking(self, on):
         self.sphere.set_state(
             "SPEAKING" if on else ("LISTENING" if self.listening else "READY")
@@ -772,6 +839,7 @@ class NovaWindow(QMainWindow):
             self.add_message("NOVA", "Stopped speaking.")
             return
 
+        self.sphere.set_expression("CURIOUS")
         self.set_state("THINKING")
         provider = self.provider.currentText().lower()
         provider = None if provider == "auto" else provider
@@ -787,6 +855,7 @@ class NovaWindow(QMainWindow):
 
     def on_reply(self, reply, provider):
         self.add_message("NOVA", reply)
+        self.set_expression_from_text(reply)
         self.set_state("READY")
         if provider and provider not in ("local", "error"):
             self.activity.setText(f"{provider.upper()} RESPONSE")
@@ -811,6 +880,7 @@ class NovaWindow(QMainWindow):
         if self.listening:
             return
         self.listening = True
+        self.sphere.set_expression("CURIOUS")
         self.listen.setText("■  STOP")
         self.set_state("LISTENING")
         Worker(self._record_once).start()
