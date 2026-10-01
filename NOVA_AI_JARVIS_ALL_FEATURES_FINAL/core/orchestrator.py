@@ -193,6 +193,16 @@ class NovaOrchestrator:
         m = re.match(r"^open\s+(\d+|.+)$", t, re.I)
         if m:
             ref = m.group(1).strip()
+            # Open directly from NOVA's stored search results first. This avoids
+            # relying on Everything's internal module cache between messages.
+            resolved = self.task_manager.resolve_file_ref(ref)
+            if resolved:
+                try:
+                    import os
+                    os.startfile(resolved)
+                    return f"Opened: {resolved}"
+                except Exception as exc:
+                    return f"Could not open {resolved}: {exc}"
             if ref.isdigit() or self._last_files:
                 return self._run("everything_file_finder", {
                     "action": "open", "ref": ref
