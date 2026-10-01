@@ -83,6 +83,16 @@ class NovaOrchestrator:
             return self._run("feature_diagnostics", {})
 
         # Natural Language Task Planning & Orchestration layer
+        # Handle PC file searches before the task planner.
+        if re.search(r"\b(?:find|search|locate|look for|show me)\b", low) and re.search(r"\b(?:file|files|pdf|project|document|folder|python|code|dataset|image|video|filename|file\s+name)\b", low):
+            exact = re.search(r"\bmy\s+(.+?)\s+files?\b", t, re.I)
+            q = exact.group(1).strip() if exact else self._clean_search_query(t)
+            if not q:
+                q = t
+            result = self._run("everything_file_finder", {"action": "search", "query": q, "limit": 50})
+            self._last_files = True
+            return result
+
         planned = self.planner.handle_natural_input(t)
         if planned is not None:
             return planned[0]
