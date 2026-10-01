@@ -4,6 +4,8 @@ import math
 import random
 import threading
 
+from memory.conversation_history import load_history
+
 from PyQt6.QtCore import Qt, QTimer, QRectF, pyqtSignal, QObject
 from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QRadialGradient, QFont, QLinearGradient
 from PyQt6.QtWidgets import (
@@ -69,72 +71,84 @@ class Sphere(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
-        cx, cy = w / 2, h / 2 - 12
-        r = min(w, h) * 0.265
+        cx, cy = w / 2, h / 2 - 18
+        base = min(w, h) * 0.30
+        pulse = 1.0 + 0.035 * math.sin(self.phase * 2.0) + 0.05 * self.amp
 
-        p.fillRect(self.rect(), QColor("#03070c"))
+        p.fillRect(self.rect(), QColor("#020308"))
 
-        random.seed(27)
-        for _ in range(115):
+        # Deep-space star field.
+        random.seed(42)
+        for _ in range(180):
             x = random.random() * w
             y = random.random() * h
-            alpha = int(16 + 42 * random.random())
-            p.setPen(QPen(QColor(65, 205, 245, alpha), 1))
+            a = int(18 + 45 * random.random())
+            p.setPen(QPen(QColor(100, 190, 255, a), 1))
             p.drawPoint(int(x), int(y))
 
-        # Outer aura.
-        for mul, alpha in ((2.5, 12), (2.05, 17), (1.65, 25), (1.35, 38)):
-            rr = r * mul * (1 + 0.025 * math.sin(self.phase * 1.6))
+        # Gravitational aura.
+        for mul, alpha in ((2.25, 10), (1.85, 15), (1.48, 22), (1.18, 34)):
+            rr = base * mul * pulse
             g = QRadialGradient(cx, cy, rr)
-            g.setColorAt(0, QColor(0, 218, 255, alpha))
-            g.setColorAt(0.55, QColor(0, 115, 255, alpha // 2))
-            g.setColorAt(1, QColor(0, 0, 0, 0))
+            g.setColorAt(0.0, QColor(0, 220, 255, alpha))
+            g.setColorAt(0.48, QColor(65, 80, 255, alpha // 2))
+            g.setColorAt(1.0, QColor(0, 0, 0, 0))
             p.setBrush(QBrush(g))
             p.setPen(Qt.PenStyle.NoPen)
             p.drawEllipse(QRectF(cx - rr, cy - rr, rr * 2, rr * 2))
 
-        # Orb body.
-        rr = r * (1 + 0.035 * math.sin(self.phase * 2.0) + 0.065 * self.amp)
-        g = QRadialGradient(cx - r * 0.3, cy - r * 0.35, rr * 1.35)
-        g.setColorAt(0, QColor("#f2ffff"))
-        g.setColorAt(0.08, QColor("#9df9ff"))
-        g.setColorAt(0.33, QColor("#20dcff"))
-        g.setColorAt(0.67, QColor("#087bc9"))
-        g.setColorAt(1, QColor("#00142b"))
-        p.setBrush(QBrush(g))
-        p.setPen(QPen(QColor(91, 240, 255, 185), 1.3))
-        p.drawEllipse(QRectF(cx - rr, cy - rr, rr * 2, rr * 2))
-
-        # Animated energy rings.
-        for k in range(8):
-            off = self.phase * (1 if k % 2 else -1) + k * 0.74
-            rx = rr * (0.28 + 0.72 * abs(math.sin(off)))
-            ry = rr * (0.07 + 0.14 * abs(math.cos(off)))
-            alpha = 55 + int(75 * self.amp)
-            p.setPen(QPen(QColor(145, 247, 255, alpha), 1.1))
+        # Rotating accretion disk — flattened, luminous, black-hole-like.
+        for k in range(18):
+            a = self.phase * (1.0 if k % 2 else -0.72) + k * 0.34
+            rx = base * (0.98 + 0.12 * math.sin(a * 1.7))
+            ry = base * (0.16 + 0.045 * math.sin(a * 2.2))
+            p.save()
+            p.translate(cx, cy)
+            p.rotate(math.degrees(a))
+            p.translate(-cx, -cy)
+            pen = QPen(QColor(40, 220, 255, 24 + int(55 * self.amp)), 1.2 + (k % 3) * 0.35)
+            p.setPen(pen)
+            p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawEllipse(QRectF(cx - rx, cy - ry, rx * 2, ry * 2))
+            p.restore()
 
-        # Core.
-        cr = r * 0.235 * (1 + 0.08 * self.amp)
-        cg = QRadialGradient(cx - cr * 0.35, cy - cr * 0.4, cr)
-        cg.setColorAt(0, QColor("#ffffff"))
-        cg.setColorAt(0.25, QColor("#c6ffff"))
-        cg.setColorAt(0.7, QColor("#00d9ff"))
-        cg.setColorAt(1, QColor(0, 55, 105, 0))
-        p.setBrush(QBrush(cg))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.drawEllipse(QRectF(cx - cr, cy - cr, cr * 2, cr * 2))
+        # Bright event horizon ring.
+        ring_r = base * (0.72 + 0.025 * math.sin(self.phase * 3.0))
+        for width, alpha in ((10, 28), (6, 60), (2, 180)):
+            pen = QPen(QColor(75, 235, 255, alpha), width)
+            p.setPen(pen)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawEllipse(QRectF(cx - ring_r, cy - ring_r * 0.42, ring_r * 2, ring_r * 0.84))
+
+        # The actual black hole.
+        hole_r = base * 0.48 * (1.0 + 0.025 * self.amp)
+        hg = QRadialGradient(cx - hole_r * 0.15, cy - hole_r * 0.12, hole_r)
+        hg.setColorAt(0.0, QColor("#000000"))
+        hg.setColorAt(0.72, QColor("#000000"))
+        hg.setColorAt(0.90, QColor(1, 7, 13, 245))
+        hg.setColorAt(1.0, QColor(0, 120, 170, 80))
+        p.setBrush(QBrush(hg))
+        p.setPen(QPen(QColor(100, 245, 255, 120), 1))
+        p.drawEllipse(QRectF(cx - hole_r, cy - hole_r, hole_r * 2, hole_r * 2))
+
+        # Orbiting energy particles.
+        for k in range(14):
+            a = self.phase * (1.3 if k % 2 else -0.9) + k * (math.tau / 14)
+            rr = base * (0.78 + 0.16 * math.sin(self.phase + k))
+            x = cx + math.cos(a) * rr
+            y = cy + math.sin(a) * rr * 0.30
+            dot = 2.0 + 2.5 * self.amp
+            p.setBrush(QBrush(QColor(120, 245, 255, 120 + int(100 * self.amp))))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(QRectF(x-dot, y-dot, dot*2, dot*2))
 
         p.setPen(QColor("#75efff"))
         font = QFont("Segoe UI", 10)
         font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 2.2)
         p.setFont(font)
-        p.drawText(
-            QRectF(cx - 120, cy + r * 1.48, 240, 30),
-            Qt.AlignmentFlag.AlignCenter,
-            self.state,
-        )
+        p.drawText(QRectF(cx - 120, cy + base * 1.38, 240, 30), Qt.AlignmentFlag.AlignCenter, self.state)
         p.end()
+
 
 
 class ChatBubble(QFrame):
@@ -332,10 +346,15 @@ class NovaWindow(QMainWindow):
 
         content.addWidget(right, 56)
 
-        self.add_message(
-            "NOVA",
-            "Hello. I’m NOVA. Tell me what you want done — open an app, find a file, control the browser, send a message, analyze your screen, or just chat.",
-        )
+        previous = load_history(24)
+        if previous:
+            for item in previous:
+                self.add_message("YOU" if item["role"] == "user" else "NOVA", item["content"])
+        else:
+            self.add_message(
+                "NOVA",
+                "Hello. I’m NOVA. Tell me what you want done — open an app, find a file, control the browser, send a message, analyze your screen, or just chat.",
+            )
 
         self.bus.reply.connect(self.on_reply)
         self.bus.state.connect(self.on_state)
@@ -600,11 +619,7 @@ class NovaWindow(QMainWindow):
 
         def work():
             try:
-                direct = self.orchestrator._direct(text)
-                if direct is not None:
-                    reply, used = direct, "local"
-                else:
-                    reply, used = self.orchestrator.handle(text, provider)
+                reply, used = self.orchestrator.handle(text, provider)
             except Exception as exc:
                 reply, used = f"I couldn't complete that action: {exc}", "error"
             self.bus.reply.emit(str(reply), str(used))
