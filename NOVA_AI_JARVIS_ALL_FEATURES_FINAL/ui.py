@@ -8,7 +8,7 @@ import re
 
 from memory.conversation_history import load_history
 
-from PyQt6.QtCore import Qt, QTimer, QRectF, pyqtSignal, QObject, QUrl
+from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF, pyqtSignal, QObject, QUrl
 from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QRadialGradient, QFont, QLinearGradient, QDesktopServices
 from PyQt6.QtWidgets import (
     QApplication,
