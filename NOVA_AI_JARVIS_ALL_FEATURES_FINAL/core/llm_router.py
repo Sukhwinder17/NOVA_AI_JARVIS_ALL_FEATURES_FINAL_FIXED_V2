@@ -84,7 +84,7 @@ class LLMRouter:
     def provider_order(self, requested: str | None = None):
         p=(requested or config.AI_PROVIDER or 'auto').lower()
         if p in ('groq','gemini','xkiro'): return [p]
-        return [x for x in ('groq','xkiro','gemini') if {'groq':config.GROQ_API_KEY,'xkiro':config.XKIRO_API_KEY,'gemini':config.GEMINI_API_KEY}[x]]
+        return [x for x in ('gemini','groq','xkiro') if {'groq':config.GROQ_API_KEY,'xkiro':config.XKIRO_API_KEY,'gemini':config.GEMINI_API_KEY}[x]]
 
     def run(self, user_text: str, history: list[dict], context: dict | None = None, requested_provider: str | None = None):
         base=[{'role':'system','content':SYSTEM_PROMPT}]
