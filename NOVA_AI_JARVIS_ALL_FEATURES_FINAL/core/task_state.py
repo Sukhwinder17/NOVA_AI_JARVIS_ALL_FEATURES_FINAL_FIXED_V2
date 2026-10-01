@@ -36,6 +36,7 @@ class TaskManager:
         self.current_task: Optional[Task] = None
         self.last_file_results: list[str] = []
         self.last_attachment: Optional[str] = None
+        self.last_links: list[dict] = []
         self.pending_confirmation: Optional[dict] = None
         self.history_tasks: list[Task] = []
 
@@ -101,6 +102,23 @@ class TaskManager:
         if self.current_task and self.current_task.is_active():
             self.current_task.attachment_path = p
             self.current_task.needs_attachment = True
+
+    def set_links(self, links: list[dict]) -> None:
+        self.last_links = [dict(x) for x in (links or []) if isinstance(x, dict) and x.get("url")]
+
+    def resolve_link_ref(self, ref: str) -> Optional[dict]:
+        if not self.last_links:
+            return None
+        m = re.search(r"\b(?:link|result|choice|number|#)?\s*(\d+)\b", str(ref).lower())
+        if m:
+            idx = int(m.group(1)) - 1
+            if 0 <= idx < len(self.last_links):
+                return self.last_links[idx]
+        target = str(ref).lower().strip()
+        for item in self.last_links:
+            if target in str(item.get("name", "")).lower() or target in str(item.get("url", "")).lower():
+                return item
+        return None
 
     def set_file_results(self, results: list[str]) -> None:
         self.last_file_results = list(results)
