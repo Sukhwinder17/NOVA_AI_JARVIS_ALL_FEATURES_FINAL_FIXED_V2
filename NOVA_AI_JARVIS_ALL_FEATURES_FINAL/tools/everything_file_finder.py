@@ -65,8 +65,12 @@ def _find_gui_exe(es_exe: Path) -> Path | None:
     candidates = [
         es_exe.with_name('Everything.exe'),
         es_exe.with_name('Everything64.exe'),
+        Path(os.environ.get('ProgramFiles', '')) / 'Everything 1.5a' / 'Everything.exe',
+        Path(os.environ.get('ProgramFiles', '')) / 'Everything 1.5a' / 'Everything64.exe',
         Path(os.environ.get('ProgramFiles', '')) / 'Everything' / 'Everything.exe',
         Path(os.environ.get('ProgramFiles', '')) / 'Everything' / 'Everything64.exe',
+        Path(os.environ.get('ProgramFiles(x86)', '')) / 'Everything 1.5a' / 'Everything.exe',
+        Path(os.environ.get('ProgramFiles(x86)', '')) / 'Everything 1.5a' / 'Everything64.exe',
         Path(os.environ.get('ProgramFiles(x86)', '')) / 'Everything' / 'Everything.exe',
         Path(os.environ.get('ProgramFiles(x86)', '')) / 'Everything' / 'Everything64.exe',
     ]
@@ -115,7 +119,9 @@ def search(query: str, limit: int = 40):
         # Prefer the ES CLI installed with Everything. The bundled copy can be
         # an older/mismatched ES build that cannot talk to the running client.
         candidates = [
+            Path(os.environ.get("ProgramFiles", "")) / "Everything 1.5a" / "es.exe",
             Path(os.environ.get("ProgramFiles", "")) / "Everything" / "es.exe",
+            Path(os.environ.get("ProgramFiles(x86)", "")) / "Everything 1.5a" / "es.exe",
             Path(os.environ.get("ProgramFiles(x86)", "")) / "Everything" / "es.exe",
             exe,
         ]
