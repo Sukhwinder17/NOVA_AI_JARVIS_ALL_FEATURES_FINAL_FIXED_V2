@@ -6,6 +6,67 @@ from typing import Any
 from . import config
 
 STORE = config.BASE_DIR / "data" / "email_accounts.json"
+
+
+GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+GMAIL_TOKEN_DIR = config.BASE_DIR / "data" / "gmail_tokens"
+
+def connect_gmail_oauth(email_hint: str = "") -> str:
+    try:
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        from googleapiclient.discovery import build
+    except ImportError:
+        raise RuntimeError("Install Gmail OAuth packages: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2")
+    candidates = [config.BASE_DIR / "config" / "google_credentials.json", config.BASE_DIR / "credentials.json"]
+    cred_file = next((p for p in candidates if p.exists()), None)
+    if not cred_file:
+        raise FileNotFoundError("Put Google Desktop OAuth credentials at config\\google_credentials.json. Google will handle sign-in; NOVA does not need your Gmail password.")
+    GMAIL_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", email_hint or "gmail")
+    token_file = GMAIL_TOKEN_DIR / f"{safe}.json"
+    creds = None
+    if token_file.exists():
+        from google.oauth2.credentials import Credentials
+        creds = Credentials.from_authorized_user_file(str(token_file), GMAIL_SCOPES)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            from google.auth.transport.requests import Request
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(str(cred_file), GMAIL_SCOPES)
+            creds = flow.run_local_server(port=0, open_browser=True)
+        token_file.write_text(creds.to_json(), encoding="utf-8")
+    service = build("gmail", "v1", credentials=creds, cache_discovery=False)
+    profile = service.users().getProfile(userId="me").execute()
+    address = profile.get("emailAddress") or email_hint
+    data = _load()
+    data[address.lower()] = {"email": address, "type": "gmail_oauth", "token": str(token_file)}
+    _save(data)
+    return f"Connected to {address} with Google OAuth. No email password was stored."
+
+def _gmail_service(address: str):
+    item = _load().get(address.lower().strip())
+    if not item or item.get("type") != "gmail_oauth": return None
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+    creds = Credentials.from_authorized_user_file(item["token"], GMAIL_SCOPES)
+    if creds.expired and creds.refresh_token:
+        from google.auth.transport.requests import Request
+        creds.refresh(Request())
+        Path(item["token"]).write_text(creds.to_json(), encoding="utf-8")
+    return build("gmail", "v1", credentials=creds, cache_discovery=False)
+
+def _gmail_text(payload):
+    import base64
+    out=[]
+    def walk(part):
+        if part.get("mimeType")=="text/plain" and part.get("body",{}).get("data"):
+            try: out.append(base64.urlsafe_b64decode(part["body"]["data"]+"==").decode("utf-8",errors="replace"))
+            except Exception: pass
+        for child in part.get("parts",[]) or []: walk(child)
+    walk(payload)
+    return "\n".join(out)
+
 PROVIDERS = {
     "gmail.com": ("imap.gmail.com", 993),
     "googlemail.com": ("imap.gmail.com", 993),
@@ -74,25 +135,41 @@ def _deadline(text):
     return ""
 
 def inbox(address: str, limit: int=25) -> list[dict[str,Any]]:
+    gmail=_gmail_service(address)
+    if gmail:
+        result=gmail.users().messages().list(userId="me",labelIds=["INBOX"],maxResults=limit).execute()
+        rows=[]
+        for item in result.get("messages",[]):
+            msg=gmail.users().messages().get(userId="me",id=item["id"],format="full").execute()
+            headers=msg.get("payload",{}).get("headers",[])
+            def geth(n): return next((h.get("value","") for h in headers if h.get("name","").lower()==n.lower()),"")
+            subject,sender=geth("Subject"),geth("From")
+            body=_gmail_text(msg.get("payload",{}))
+            rows.append({"subject":subject or "(no subject)","from":sender,"date":geth("Date"),
+                         "category":_classify(subject,body,sender),"deadline":_deadline(subject+"\n"+body),
+                         "attachments":[p.get("filename") for p in msg.get("payload",{}).get("parts",[]) if p.get("filename")],
+                         "snippet":msg.get("snippet","")})
+        return rows
     box=_connect(address)
     try:
         status,_=box.select("INBOX",readonly=True)
-        if status!="OK": raise RuntimeError("Could not open INBOX.")
-        status,data=box.search(None,"ALL")
         if status!="OK": return []
+        _,data=box.search(None,"ALL")
         ids=data[0].split()[-limit:]
         rows=[]
         for mid in reversed(ids):
             status,raw=box.fetch(mid,"(RFC822)")
             if status!="OK" or not raw or not raw[0]: continue
             msg=email.message_from_bytes(raw[0][1])
-            subject=_decode(msg.get("Subject","")); sender=_decode(msg.get("From","")); body=_body(msg)
-            rows.append({
-                "subject":subject or "(no subject)","from":sender,"date":msg.get("Date",""),
-                "category":_classify(subject,body,sender),"deadline":_deadline(subject+"\n"+body),
-                "attachments":[p.get_filename() for p in msg.walk() if p.get_filename()],
-                "snippet":re.sub(r"\s+"," ",body).strip()[:220]
-            })
+            subject=_decode(msg.get("Subject","")); sender=_decode(msg.get("From","")); body=""
+            for p in msg.walk() if msg.is_multipart() else [msg]:
+                if p.get_content_type()=="text/plain" and not p.get_filename():
+                    try: body+=p.get_payload(decode=True).decode(p.get_content_charset() or "utf-8",errors="replace")
+                    except Exception: pass
+            rows.append({"subject":subject or "(no subject)","from":sender,"date":msg.get("Date",""),
+                         "category":_classify(subject,body,sender),"deadline":_deadline(subject+"\n"+body),
+                         "attachments":[p.get_filename() for p in msg.walk() if p.get_filename()] if msg.is_multipart() else [],
+                         "snippet":re.sub(r"\s+"," ",body).strip()[:220]})
         return rows
     finally:
         try: box.logout()
