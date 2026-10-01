@@ -160,6 +160,29 @@ def learning_resources(parameters: dict, player=None, **kwargs) -> str:
                 pass
         result = "\n".join(lines)
 
+    # Make every actionable URL explicitly selectable in the NOVA chat.
+    # The task planner stores these URLs so follow-ups like "open link 2"
+    # resolve to the exact resource shown in this response.
+    numbered_lines = []
+    link_no = 0
+    seen_urls = set()
+    import re
+    for line in result.splitlines():
+        urls = re.findall(r"https?://\\S+", line)
+        if urls:
+            clean_urls = []
+            for url in urls:
+                clean = url.rstrip(").,;")
+                if clean not in seen_urls:
+                    seen_urls.add(clean)
+                    link_no += 1
+                    clean_urls.append((link_no, clean))
+            if clean_urls:
+                prefix = " ".join(f"[LINK {n}]" for n, _ in clean_urls)
+                line = prefix + " " + line
+        numbered_lines.append(line)
+    result = "\\n".join(numbered_lines)
+
     if player and hasattr(player, "write_log"):
         player.write_log(f"[learning] Guide prepared for {topic}")
     return result
