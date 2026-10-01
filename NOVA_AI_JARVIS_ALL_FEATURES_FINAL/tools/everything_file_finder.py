@@ -111,10 +111,29 @@ def search(query: str, limit: int = 40):
 
     raw = []
 
+    def resolve_es_exe() -> Path:
+        # Prefer the ES CLI installed with Everything. The bundled copy can be
+        # an older/mismatched ES build that cannot talk to the running client.
+        candidates = [
+            Path(os.environ.get("ProgramFiles", "")) / "Everything" / "es.exe",
+            Path(os.environ.get("ProgramFiles(x86)", "")) / "Everything" / "es.exe",
+            exe,
+        ]
+        for candidate in candidates:
+            try:
+                if candidate.exists():
+                    return candidate
+            except Exception:
+                pass
+        return exe
+
+    es_cli = resolve_es_exe()
+
     def run_es(search_query: str):
         try:
+            # Filename-only search: do not search file contents or paths.
             result = subprocess.run(
-                [str(exe), "-a-d", "-n", str(limit), search_query],
+                [str(es_cli), "-n", str(limit), "/a-d", "-full-path-and-name", search_query],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -149,13 +168,7 @@ def search(query: str, limit: int = 40):
         if code == 0:
             raw = stdout.splitlines()
 
-        # If filename search has no hits, try Everything's content index too.
-        if not raw and q:
-            safe_q = q.replace('"', "'")
-            content_query = f'content:"{safe_q}"'
-            code2, stdout2 = run_es(content_query)
-            if code2 == 0:
-                raw = stdout2.splitlines()
+        # Intentionally no content search: NOVA's file finder is filename-only.
 
     out = []
     seen = set()
