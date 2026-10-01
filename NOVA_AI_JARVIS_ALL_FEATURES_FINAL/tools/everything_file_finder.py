@@ -129,11 +129,15 @@ def search(query: str, limit: int = 40):
 
     es_cli = resolve_es_exe()
 
-    def run_es(search_query: str):
+    def run_es(search_query: str, instance: str | None = None):
         try:
-            # Filename-only search: do not search file contents or paths.
+            args = [str(es_cli)]
+            if instance:
+                args += ["-instance", instance]
+            # Filename-only search. -match-path is compatible with ES 1.4/1.5.
+            args += ["-n", str(limit), "/a-d", "-match-path", search_query]
             result = subprocess.run(
-                [str(es_cli), "-n", str(limit), "/a-d", "-full-path-and-name", search_query],
+                args,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -146,27 +150,35 @@ def search(query: str, limit: int = 40):
             return -1, ""
 
     if exe.exists():
-        code, stdout = run_es(q)
+        # Everything 1.5 alpha uses a separate IPC instance. Try it first,
+        # then fall back to the normal instance.
+        attempts = [("1.5a", None), (None, None)]
+        for instance, _ in attempts:
+            code, stdout = run_es(q, instance)
+            if code == 0:
+                raw = stdout.splitlines()
+                break
 
-        # ES exit code 8 means Everything is not running.
-        # Start it in the background (no search window), then retry.
-        if code == 8 or "IPC not found" in stdout or "IPC window was not found" in stdout:
+        # If Everything is not running, start it silently and retry.
+        # -startup is documented to run Everything without opening a search window.
+        if not raw:
             gui_exe = _find_gui_exe(exe)
             if gui_exe:
                 try:
                     subprocess.Popen(
-                        [str(gui_exe), "-startup", "-first-instance"],
+                        [str(gui_exe), "-startup", "-instance", "1.5a"],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                     )
-                    time.sleep(1.0)
-                    code, stdout = run_es(q)
+                    time.sleep(1.5)
+                    for instance in ("1.5a", None):
+                        code, stdout = run_es(q, instance)
+                        if code == 0:
+                            raw = stdout.splitlines()
+                            break
                 except Exception:
                     pass
-
-        if code == 0:
-            raw = stdout.splitlines()
 
         # Intentionally no content search: NOVA's file finder is filename-only.
 
