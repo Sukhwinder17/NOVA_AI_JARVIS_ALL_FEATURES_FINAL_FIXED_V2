@@ -107,7 +107,6 @@ def search(query: str, limit: int = 40):
     if not q:
         q = query.strip()
 
-    show_everything_search(q)
 
     raw = []
     if exe.exists():
