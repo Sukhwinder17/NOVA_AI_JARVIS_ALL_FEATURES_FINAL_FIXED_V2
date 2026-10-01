@@ -234,7 +234,7 @@ class NovaWindow(QMainWindow):
 
         stage = QHBoxLayout()
         stage.setSpacing(14)
-        main.addLayout(stage, 1)
+        main.addLayout(stage, 5)
 
         left = QFrame()
         left.setObjectName("hudPanel")
@@ -399,7 +399,7 @@ class NovaWindow(QMainWindow):
         self.quick = QLabel("Say “find my gradient descent files” → NOVA instantly shows the matching file list here. Then say “open 2”.")
         self.quick.setObjectName("quick")
         dl.addWidget(self.quick)
-        main.addWidget(chatDock, 0)
+        main.addWidget(chatDock, 2)
 
         previous = load_history(24)
         if previous:
