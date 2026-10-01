@@ -8,14 +8,21 @@ def email_manager(parameters: dict, player=None, **kwargs) -> str:
         address=str(p.get("email",account)).strip()
         if not address: return "Tell me the email address to connect."
         try:
+            password = str(p.get("password", "") or "")
+            # If the UI supplies a password, explicitly use password/IMAP mode.
+            # This is useful for providers that support IMAP passwords and for
+            # Gmail accounts using a Google App Password.
+            if password:
+                host = str(p.get("imap_host", "")).strip()
+                save_account(address, password, host)
+                item = __import__("core.email_manager", fromlist=["_load"])._load()
+                item[address.lower()]["type"] = "imap_password"
+                __import__("core.email_manager", fromlist=["_save"])._save(item)
+                inbox(address, 1)  # validate BEFORE reporting success
+                return f"Connected to {address}."
             if address.lower().endswith(("@gmail.com","@googlemail.com")):
                 return connect_gmail_oauth(address)
-            password=str(p.get("password",""))
-            if not password:
-                return "For this provider, NOVA needs its OAuth connection or an app-password. Gmail now connects without a password."
-            save_account(address,password,str(p.get("imap_host","")).strip())
-            inbox(address,1)
-            return f"Connected to {address}."
+            return "Enter your email password to connect. For Gmail, use a Google App Password if normal password login is rejected."
         except Exception as exc:
             return f"Could not connect {address}: {exc}"
 
