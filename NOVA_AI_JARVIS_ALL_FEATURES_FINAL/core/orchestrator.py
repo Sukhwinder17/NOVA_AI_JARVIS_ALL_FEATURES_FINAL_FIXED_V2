@@ -104,6 +104,20 @@ class NovaOrchestrator:
                 })
             return "Tell me what to search for in your email."
 
+        # Android phone bridge commands.
+        if re.search(r"\b(?:connect|pair|link)\b", low) and re.search(r"\b(?:phone|android|mobile)\b", low):
+            address_match = re.search(r"(\d{1,3}(?:\.\d{1,3}){3}:\d+)", t)
+            return self._run("phone_manager", {"action": "connect", "address": address_match.group(1) if address_match else ""})
+        if re.search(r"\b(?:phone|android|mobile)\b", low) and re.search(r"\b(?:status|battery)\b", low):
+            return self._run("phone_manager", {"action": "status"})
+        if re.search(r"\b(?:send|show)\b", low) and re.search(r"\bnotification\b", low) and re.search(r"\b(?:phone|android|mobile)\b", low):
+            msg = re.sub(r"^.*?\bnotification\b\s*(?:to\s+(?:my\s+)?phone)?\s*", "", t, flags=re.I).strip(" :")
+            return self._run("phone_manager", {"action": "notify", "message": msg or "NOVA AI notification"})
+        if re.search(r"\b(?:phone|android|mobile)\b", low) and re.search(r"\bscreenshot\b", low):
+            return self._run("phone_manager", {"action": "screenshot"})
+        if re.search(r"\b(?:disconnect|unlink)\b", low) and re.search(r"\b(?:phone|android|mobile)\b", low):
+            return self._run("phone_manager", {"action": "disconnect"})
+
         # Email intelligence commands.
         if re.search(r"\b(?:check|show|scan|read|summarize|review)\b", low) and re.search(r"\b(?:email|emails|inbox|mail)\b", low):
             if re.search(r"\b(?:important|urgent|assignment|work)\b", low):
