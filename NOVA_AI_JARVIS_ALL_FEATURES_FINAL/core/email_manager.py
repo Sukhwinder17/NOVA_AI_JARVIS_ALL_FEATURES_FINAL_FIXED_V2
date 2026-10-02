@@ -199,15 +199,60 @@ def _save(data: dict) -> None:
     STORE.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 def save_account(address: str, password: str, host: str = "", port: int = 993) -> None:
-    address=address.strip()
-    domain=address.rsplit("@",1)[-1].lower()
-    default_host, default_port=PROVIDERS.get(domain, ("", 993))
-    host=(host or default_host).strip()
-    if not host: raise ValueError("Unknown provider. Provide its IMAP server.")
-    data=_load()
-    data[address.lower()]={"email":address,"password":password,"host":host,"port":int(port or default_port)}
-    STORE.parent.mkdir(parents=True, exist_ok=True)
-    STORE.write_text(json.dumps(data), encoding="utf-8")
+    """Validate IMAP credentials first, then persist them.
+
+    Gmail App Passwords are often copied with spaces; Gmail IMAP needs the
+    actual 16-character value without those spaces. A normal Google account
+    password is not accepted by Gmail's third-party password IMAP flow.
+    """
+    address = address.strip()
+    domain = address.rsplit("@", 1)[-1].lower()
+    default_host, default_port = PROVIDERS.get(domain, ("", 993))
+    host = (host or default_host).strip()
+    if not host:
+        raise ValueError("Unknown provider. Provide its IMAP server.")
+
+    raw_password = str(password or "")
+    if domain in ("gmail.com", "googlemail.com"):
+        password = re.sub(r"\s+", "", raw_password)
+    else:
+        password = raw_password
+    if not password:
+        raise ValueError("Password cannot be empty.")
+
+    # Validate BEFORE writing anything to disk.
+    box = None
+    try:
+        box = imaplib.IMAP4_SSL(
+            host,
+            int(port or default_port),
+            ssl_context=ssl.create_default_context(),
+        )
+        box.login(address, password)
+    except imaplib.IMAP4.error as exc:
+        if domain in ("gmail.com", "googlemail.com"):
+            raise RuntimeError(
+                "Gmail rejected these credentials. If you entered your normal "
+                "Gmail password, use a Google App Password (16 characters) "
+                "instead. App Passwords require 2-Step Verification."
+            ) from exc
+        raise RuntimeError(f"Email server rejected the credentials: {exc}") from exc
+    finally:
+        if box is not None:
+            try:
+                box.logout()
+            except Exception:
+                pass
+
+    data = _load()
+    data[address.lower()] = {
+        "email": address,
+        "password": password,
+        "host": host,
+        "port": int(port or default_port),
+        "type": "imap_password",
+    }
+    _save(data)
 
 def accounts() -> list[str]: return list(_load().keys())
 
