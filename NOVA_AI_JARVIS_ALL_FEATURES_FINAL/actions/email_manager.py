@@ -43,7 +43,7 @@ def email_manager(parameters: dict, player=None, **kwargs) -> str:
             query=str(p.get("query","")).strip()
             if not query: return "Provide a Gmail search query."
             rows=gmail_search(account, query, int(p.get("limit",25) or 25))
-            return "\n".join([f"📧 SEARCH RESULTS — {account}"]+[f"• {r["subject"]} — {r["from"]} — {r["date"]}" for r in rows]) if rows else "No matching emails found."
+            return "\n".join([f"📧 SEARCH RESULTS — {account}"]+[f"• {r['subject']} — {r['from']} — {r['date']}" for r in rows]) if rows else "No matching emails found."
         if action=="send":
             to=str(p.get("to","")).strip(); subject=str(p.get("subject","")).strip(); body=str(p.get("body",""))
             if not to or not subject or not body: return "Send requires to, subject, and body."
