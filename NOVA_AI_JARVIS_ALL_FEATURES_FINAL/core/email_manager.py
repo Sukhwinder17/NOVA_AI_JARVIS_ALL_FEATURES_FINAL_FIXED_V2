@@ -8,7 +8,10 @@ from . import config
 STORE = config.BASE_DIR / "data" / "email_accounts.json"
 
 
-GMAIL_SCOPES = [\n    "https://www.googleapis.com/auth/gmail.modify",\n    "https://www.googleapis.com/auth/gmail.send",\n]
+GMAIL_SCOPES = [
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.send",
+]
 GMAIL_TOKEN_DIR = config.BASE_DIR / "data" / "gmail_tokens_v2"
 GMAIL_SETUP_URL = "https://console.cloud.google.com/auth/clients"
 GMAIL_CREDENTIAL_ENV = "NOVA_GOOGLE_CREDENTIALS"
@@ -162,7 +165,64 @@ def _gmail_service(address: str):
     except Exception:
         return None
 
-def _gmail_headers(msg):\n    headers = msg.get("payload", {}).get("headers", [])\n    def geth(name):\n        return next((h.get("value", "") for h in headers if h.get("name", "").lower() == name.lower()), "")\n    return {"subject": geth("Subject"), "from": geth("From"), "to": geth("To"), "cc": geth("Cc"), "date": geth("Date"), "message_id": geth("Message-ID")}\n\ndef _gmail_message(service, message_id: str):\n    return service.users().messages().get(userId="me", id=message_id, format="full").execute()\n\ndef gmail_search(address: str, query: str, limit: int = 20) -> list[dict]:\n    service = _gmail_service(address)\n    if not service: raise RuntimeError("Gmail OAuth is not connected. Use 'connect email' first.")\n    result = service.users().messages().list(userId="me", q=query, maxResults=max(1, min(limit, 100))).execute()\n    rows=[]\n    for item in result.get("messages", []):\n        msg=_gmail_message(service,item["id"]); h=_gmail_headers(msg)\n        rows.append({"id":item["id"],"thread_id":item.get("threadId",""),"subject":h["subject"] or "(no subject)","from":h["from"],"to":h["to"],"date":h["date"],"snippet":msg.get("snippet",""),"labels":msg.get("labelIds",[]),"body":_gmail_text(msg.get("payload",{}))})\n    return rows\n\ndef gmail_send(address: str, to: str, subject: str, body: str, cc: str = "", bcc: str = "") -> str:\n    import base64\n    from email.message import EmailMessage\n    service=_gmail_service(address)\n    if not service: raise RuntimeError("Gmail OAuth is not connected. Use 'connect email' first.")\n    msg=EmailMessage(); msg["To"]=to; msg["Subject"]=subject\n    if cc: msg["Cc"]=cc\n    if bcc: msg["Bcc"]=bcc\n    msg.set_content(body)\n    raw=base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")\n    sent=service.users().messages().send(userId="me",body={"raw":raw}).execute()\n    return sent.get("id","")\n\ndef gmail_modify(address: str, message_id: str, add_labels=None, remove_labels=None) -> None:\n    service=_gmail_service(address)\n    if not service: raise RuntimeError("Gmail OAuth is not connected. Use 'connect email' first.")\n    service.users().messages().modify(userId="me",id=message_id,body={"addLabelIds":add_labels or [],"removeLabelIds":remove_labels or []}).execute()\n\ndef gmail_trash(address: str, message_id: str) -> None:\n    service=_gmail_service(address)\n    if not service: raise RuntimeError("Gmail OAuth is not connected. Use 'connect email' first.")\n    service.users().messages().trash(userId="me",id=message_id).execute()\n\ndef gmail_reply(address: str, message_id: str, body: str) -> str:\n    import base64\n    from email.message import EmailMessage\n    service=_gmail_service(address)\n    if not service: raise RuntimeError("Gmail OAuth is not connected. Use 'connect email' first.")\n    original=_gmail_message(service,message_id); h=_gmail_headers(original)\n    subject=h["subject"] or ""\n    if not subject.lower().startswith("re:"): subject="Re: "+subject\n    msg=EmailMessage(); msg["To"]=h["from"]; msg["Subject"]=subject\n    if h["message_id"]: msg["In-Reply-To"]=h["message_id"]; msg["References"]=h["message_id"]\n    msg.set_content(body)\n    raw=base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")\n    sent=service.users().messages().send(userId="me",body={"raw":raw,"threadId":original.get("threadId","")}).execute()\n    return sent.get("id","")\n\ndef _gmail_text(payload):
+def _gmail_headers(msg):
+    headers = msg.get("payload", {}).get("headers", [])
+    def geth(name):
+        return next((h.get("value", "") for h in headers if h.get("name", "").lower() == name.lower()), "")
+    return {"subject": geth("Subject"), "from": geth("From"), "to": geth("To"), "cc": geth("Cc"), "date": geth("Date"), "message_id": geth("Message-ID")}
+
+def _gmail_message(service, message_id: str):
+    return service.users().messages().get(userId="me", id=message_id, format="full").execute()
+
+def gmail_search(address: str, query: str, limit: int = 20) -> list[dict]:
+    service = _gmail_service(address)
+    if not service: raise RuntimeError("Gmail OAuth is not connected. Use 'connect email' first.")
+    result = service.users().messages().list(userId="me", q=query, maxResults=max(1, min(limit, 100))).execute()
+    rows=[]
+    for item in result.get("messages", []):
+        msg=_gmail_message(service,item["id"]); h=_gmail_headers(msg)
+        rows.append({"id":item["id"],"thread_id":item.get("threadId",""),"subject":h["subject"] or "(no subject)","from":h["from"],"to":h["to"],"date":h["date"],"snippet":msg.get("snippet",""),"labels":msg.get("labelIds",[]),"body":_gmail_text(msg.get("payload",{}))})
+    return rows
+
+def gmail_send(address: str, to: str, subject: str, body: str, cc: str = "", bcc: str = "") -> str:
+    import base64
+    from email.message import EmailMessage
+    service=_gmail_service(address)
+    if not service: raise RuntimeError("Gmail OAuth is not connected. Use 'connect email' first.")
+    msg=EmailMessage(); msg["To"]=to; msg["Subject"]=subject
+    if cc: msg["Cc"]=cc
+    if bcc: msg["Bcc"]=bcc
+    msg.set_content(body)
+    raw=base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
+    sent=service.users().messages().send(userId="me",body={"raw":raw}).execute()
+    return sent.get("id","")
+
+def gmail_modify(address: str, message_id: str, add_labels=None, remove_labels=None) -> None:
+    service=_gmail_service(address)
+    if not service: raise RuntimeError("Gmail OAuth is not connected. Use 'connect email' first.")
+    service.users().messages().modify(userId="me",id=message_id,body={"addLabelIds":add_labels or [],"removeLabelIds":remove_labels or []}).execute()
+
+def gmail_trash(address: str, message_id: str) -> None:
+    service=_gmail_service(address)
+    if not service: raise RuntimeError("Gmail OAuth is not connected. Use 'connect email' first.")
+    service.users().messages().trash(userId="me",id=message_id).execute()
+
+def gmail_reply(address: str, message_id: str, body: str) -> str:
+    import base64
+    from email.message import EmailMessage
+    service=_gmail_service(address)
+    if not service: raise RuntimeError("Gmail OAuth is not connected. Use 'connect email' first.")
+    original=_gmail_message(service,message_id); h=_gmail_headers(original)
+    subject=h["subject"] or ""
+    if not subject.lower().startswith("re:"): subject="Re: "+subject
+    msg=EmailMessage(); msg["To"]=h["from"]; msg["Subject"]=subject
+    if h["message_id"]: msg["In-Reply-To"]=h["message_id"]; msg["References"]=h["message_id"]
+    msg.set_content(body)
+    raw=base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
+    sent=service.users().messages().send(userId="me",body={"raw":raw,"threadId":original.get("threadId","")}).execute()
+    return sent.get("id","")
+
+def _gmail_text(payload):
     import base64
     out=[]
     def walk(part):
@@ -171,7 +231,8 @@ def _gmail_headers(msg):\n    headers = msg.get("payload", {}).get("headers", []
             except Exception: pass
         for child in part.get("parts",[]) or []: walk(child)
     walk(payload)
-    return "\n".join(out)
+    return "
+".join(out)
 
 PROVIDERS = {
     "gmail.com": ("imap.gmail.com", 993),
@@ -271,7 +332,8 @@ def _body(msg) -> str:
         if p.get_content_type()=="text/plain" and not p.get_filename():
             try: parts.append(p.get_payload(decode=True).decode(p.get_content_charset() or "utf-8", errors="replace"))
             except Exception: pass
-    return "\n".join(parts)
+    return "
+".join(parts)
 
 def _classify(subject, body, sender):
     t=f"{subject} {body} {sender}".lower()
@@ -315,7 +377,8 @@ def inbox(address: str, limit: int=25) -> list[dict[str,Any]]:
             subject,sender=geth("Subject"),geth("From")
             body=_gmail_text(msg.get("payload",{}))
             rows.append({"subject":subject or "(no subject)","from":sender,"date":geth("Date"),
-                         "category":_classify(subject,body,sender),"deadline":_deadline(subject+"\n"+body),
+                         "category":_classify(subject,body,sender),"deadline":_deadline(subject+"
+"+body),
                          "attachments":[p.get("filename") for p in msg.get("payload",{}).get("parts",[]) if p.get("filename")],
                          "snippet":msg.get("snippet","")})
         return rows
@@ -336,7 +399,8 @@ def inbox(address: str, limit: int=25) -> list[dict[str,Any]]:
                     try: body+=p.get_payload(decode=True).decode(p.get_content_charset() or "utf-8",errors="replace")
                     except Exception: pass
             rows.append({"subject":subject or "(no subject)","from":sender,"date":msg.get("Date",""),
-                         "category":_classify(subject,body,sender),"deadline":_deadline(subject+"\n"+body),
+                         "category":_classify(subject,body,sender),"deadline":_deadline(subject+"
+"+body),
                          "attachments":[p.get_filename() for p in msg.walk() if p.get_filename()] if msg.is_multipart() else [],
                          "snippet":re.sub(r"\s+"," ",body).strip()[:220]})
         return rows
@@ -358,4 +422,5 @@ def summarize(address: str, limit=25) -> str:
                 dl=f" — {r['deadline']}" if r["deadline"] else ""
                 lines.append(f"• {r['subject']} — {r['from']}{dl}")
             lines.append("")
-    return "\n".join(lines).strip()
+    return "
+".join(lines).strip()
