@@ -865,16 +865,38 @@ class NovaWindow(QMainWindow):
         Worker(work).start()
 
     def _begin_email_connect(self, address, password=None):
-        """Connect email without putting the password into NOVA chat/history."""
+        """Connect email. Gmail uses Google's browser OAuth sign-in."""
+        is_gmail = address.lower().endswith(("@gmail.com", "@googlemail.com"))
+
+        if is_gmail:
+            # Do not collect the Gmail password. Google handles authentication
+            # and consent in the browser; NOVA receives only the OAuth result.
+            self.add_message("NOVA", f"Opening secure Google sign-in for {address}…")
+            self.set_state("THINKING")
+
+            def gmail_work():
+                try:
+                    reply = self.orchestrator._run("email_manager", {
+                        "action": "connect",
+                        "email": address,
+                    })
+                except Exception as exc:
+                    reply = f"Email connection failed: {exc}"
+                self.bus.reply.emit(str(reply), "local")
+
+            Worker(gmail_work).start()
+            return
+
         if password is None:
             password, ok = QInputDialog.getText(
                 self,
                 "Email Password",
-                "Password / Google App Password:",
+                "Password:",
                 QLineEdit.EchoMode.Password,
             )
             if not ok or not password:
                 return
+
         self.add_message("NOVA", f"Connecting {address} securely…")
         self.set_state("THINKING")
 
@@ -896,12 +918,12 @@ class NovaWindow(QMainWindow):
         Worker(email_work).start()
 
     def on_email_retry(self, address, error):
-        """Ask again when credentials are rejected; never echo the password."""
+        """Ask again only for non-Gmail IMAP credentials."""
         self.set_state("READY")
         password, ok = QInputDialog.getText(
             self,
             "Email Login Failed",
-            f"{error}\n\nRe-enter password / Google App Password:",
+            f"{error}\n\nRe-enter password:",
             QLineEdit.EchoMode.Password,
         )
         if not ok or not password:
