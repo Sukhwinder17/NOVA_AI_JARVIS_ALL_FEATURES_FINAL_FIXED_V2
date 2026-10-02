@@ -396,8 +396,7 @@ def inbox(address: str, limit: int=25) -> list[dict[str,Any]]:
                     try: body+=p.get_payload(decode=True).decode(p.get_content_charset() or "utf-8",errors="replace")
                     except Exception: pass
             rows.append({"subject":subject or "(no subject)","from":sender,"date":msg.get("Date",""),
-                         "category":_classify(subject,body,sender),"deadline":_deadline(subject+"
-"+body),
+                         "category":_classify(subject,body,sender),"deadline":_deadline(subject+"\n"+body),
                          "attachments":[p.get_filename() for p in msg.walk() if p.get_filename()] if msg.is_multipart() else [],
                          "snippet":re.sub(r"\s+"," ",body).strip()[:220]})
         return rows
