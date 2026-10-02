@@ -231,8 +231,7 @@ def _gmail_text(payload):
             except Exception: pass
         for child in part.get("parts",[]) or []: walk(child)
     walk(payload)
-    return "
-".join(out)
+    return "\n".join(out)
 
 PROVIDERS = {
     "gmail.com": ("imap.gmail.com", 993),
