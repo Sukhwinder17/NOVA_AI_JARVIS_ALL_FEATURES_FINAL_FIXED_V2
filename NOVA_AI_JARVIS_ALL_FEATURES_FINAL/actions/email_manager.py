@@ -6,7 +6,13 @@ def email_manager(parameters: dict, player=None, **kwargs) -> str:
     account=str(p.get("account","")).strip()
     if action=="connect":
         address=str(p.get("email",account)).strip()
-        if not address: return "Tell me the email address to connect."
+        # No email input is required for Gmail: Google will show its own
+        # account chooser/sign-in page and return the actual account address.
+        if not address:
+            try:
+                return connect_gmail_oauth("")
+            except Exception as exc:
+                return f"Could not start Google sign-in: {exc}"
         try:
             password = str(p.get("password", "") or "")
             # If the UI supplies a password, explicitly use password/IMAP mode.
