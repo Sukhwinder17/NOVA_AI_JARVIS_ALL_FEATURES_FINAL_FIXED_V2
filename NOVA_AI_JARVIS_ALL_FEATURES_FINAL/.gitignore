@@ -7,3 +7,6 @@ data/browser_profile/
 data/*.json
 outputs/*
 *.log
+config/google_credentials.json
+config/credentials.json
+credentials.json
