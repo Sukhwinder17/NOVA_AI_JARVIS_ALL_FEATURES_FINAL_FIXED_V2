@@ -75,6 +75,21 @@ The first time NOVA uses its dedicated browser profile, WhatsApp Web may require
 
 Or double-click `START_NOVA_AI.bat`.
 
+
+## Gmail one-message connection
+
+NOVA supports passwordless Gmail connection through Google's OAuth browser flow. The user does not type a Gmail password into NOVA.
+
+1. In Google Cloud, create an OAuth Client ID of type **Desktop app** and download the JSON.
+2. Rename the downloaded file to `google_credentials.json`.
+3. Put it at `config\google_credentials.json` (the file is gitignored).
+4. Start NOVA and send exactly: `connect email`.
+5. NOVA opens Google's account chooser/sign-in page. Complete Google sign-in and consent once.
+6. NOVA stores the OAuth token locally under `data\gmail_tokens_v2\` and can reuse it on later launches.
+
+The repository includes `config/google_credentials.example.json` only as a safe format example. **Never commit the real client secret JSON.** If a real client-secret file is ever uploaded to chat, pasted publicly, or committed, revoke/rotate that OAuth client secret in Google Cloud before continuing.
+
+Gmail OAuth in this build requests Gmail modify + send permissions so the integration can be extended from inbox reading to actions such as sending/replying and message organization.
 ## First tests
 
 Type these one at a time:
