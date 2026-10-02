@@ -92,7 +92,7 @@ class NovaOrchestrator:
             return self._run("email_manager", {"action": "summary", "limit": 30})
 
         if re.search(r"\b(?:connect|link|add)\b", low) and re.search(r"\b(?:email|gmail|outlook|yahoo|mail)\b", low):
-            return "Email connection is ready. Use 'connect email' and NOVA will securely ask for the email address and provider app-password without putting the password in chat."
+            return self._run("email_manager", {"action": "connect"})
 
         if re.fullmatch(r"(?:email|mail)\s+(?:accounts?|connected)", low):
             return self._run("email_manager", {"action": "accounts"})
