@@ -83,6 +83,27 @@ class NovaOrchestrator:
         if re.fullmatch(r"(?:check|test|diagnose|scan)\s+(?:nova\s+)?(?:features?|systems?|capabilities?)", low):
             return self._run("feature_diagnostics", {})
 
+        # Email search commands. Handle these before the LLM/task planner so
+        # phrases like "search my email for internship" execute against Gmail.
+        if re.search(r"\b(?:search|find|look for|look up)\b", low) and re.search(r"\b(?:email|emails|inbox|mail)\b", low):
+            qmatch = re.search(
+                r"\b(?:search|find|look for|look up)\s+(?:my|the)?\s*(?:email|emails|inbox|mail)\s+(?:for|about|regarding|on)\s+(.+)$",
+                t, re.I,
+            )
+            if not qmatch:
+                qmatch = re.search(
+                    r"\b(?:search|find|look for|look up)\s+(?:my|the)?\s*(?:email|emails|inbox|mail)\s+(.+)$",
+                    t, re.I,
+                )
+            query = qmatch.group(1).strip() if qmatch else ""
+            if query:
+                return self._run("email_manager", {
+                    "action": "search",
+                    "query": query,
+                    "limit": 25,
+                })
+            return "Tell me what to search for in your email."
+
         # Email intelligence commands.
         if re.search(r"\b(?:check|show|scan|read|summarize|review)\b", low) and re.search(r"\b(?:email|emails|inbox|mail)\b", low):
             if re.search(r"\b(?:important|urgent|assignment|work)\b", low):
