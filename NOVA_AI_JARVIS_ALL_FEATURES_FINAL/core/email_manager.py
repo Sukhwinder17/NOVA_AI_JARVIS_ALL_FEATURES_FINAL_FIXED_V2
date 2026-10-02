@@ -105,7 +105,9 @@ def connect_gmail_oauth(email_hint: str = "") -> str:
         flow = InstalledAppFlow.from_client_secrets_file(str(cred_file), GMAIL_SCOPES)
         # login_hint preselects the address when Google supports it; the password
         # remains entirely inside Google's browser page.
-        kwargs = {"open_browser": True}
+        # Always show Google's account chooser on a fresh sign-in.
+        # The user never types their Gmail password into NOVA.
+        kwargs = {"open_browser": True, "prompt": "select_account"}
         if hint:
             kwargs["login_hint"] = hint
         creds = flow.run_local_server(
