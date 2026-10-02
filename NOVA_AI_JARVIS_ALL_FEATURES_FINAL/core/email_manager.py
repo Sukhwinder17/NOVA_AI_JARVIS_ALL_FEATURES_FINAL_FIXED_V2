@@ -331,8 +331,7 @@ def _body(msg) -> str:
         if p.get_content_type()=="text/plain" and not p.get_filename():
             try: parts.append(p.get_payload(decode=True).decode(p.get_content_charset() or "utf-8", errors="replace"))
             except Exception: pass
-    return "
-".join(parts)
+    return "\n".join(parts)
 
 def _classify(subject, body, sender):
     t=f"{subject} {body} {sender}".lower()
@@ -376,8 +375,7 @@ def inbox(address: str, limit: int=25) -> list[dict[str,Any]]:
             subject,sender=geth("Subject"),geth("From")
             body=_gmail_text(msg.get("payload",{}))
             rows.append({"subject":subject or "(no subject)","from":sender,"date":geth("Date"),
-                         "category":_classify(subject,body,sender),"deadline":_deadline(subject+"
-"+body),
+                         "category":_classify(subject,body,sender),"deadline":_deadline(subject+"\n"+body),
                          "attachments":[p.get("filename") for p in msg.get("payload",{}).get("parts",[]) if p.get("filename")],
                          "snippet":msg.get("snippet","")})
         return rows
@@ -421,5 +419,4 @@ def summarize(address: str, limit=25) -> str:
                 dl=f" — {r['deadline']}" if r["deadline"] else ""
                 lines.append(f"• {r['subject']} — {r['from']}{dl}")
             lines.append("")
-    return "
-".join(lines).strip()
+    return "\n".join(lines).strip()
