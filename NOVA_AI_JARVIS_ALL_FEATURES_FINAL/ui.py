@@ -844,10 +844,9 @@ class NovaWindow(QMainWindow):
             return
 
         if low in ("connect email", "connect my email", "add email", "connect an email"):
-            address, ok = QInputDialog.getText(self, "Connect Email", "Email address:")
-            if not ok or not address.strip():
-                return
-            self._begin_email_connect(address.strip())
+            # One-click Gmail connection: no email/password dialog.
+            # Google opens its own account chooser/sign-in page in the browser.
+            self._begin_email_connect("")
             return
 
         self.sphere.set_expression("CURIOUS")
@@ -864,14 +863,13 @@ class NovaWindow(QMainWindow):
 
         Worker(work).start()
 
-    def _begin_email_connect(self, address, password=None):
-        """Connect email. Gmail uses Google's browser OAuth sign-in."""
-        is_gmail = address.lower().endswith(("@gmail.com", "@googlemail.com"))
+    def _begin_email_connect(self, address="", password=None):
+        """Connect email. Gmail opens Google's account chooser/sign-in in the browser."""
+        address = str(address or "").strip()
+        is_gmail = not address or address.lower().endswith(("@gmail.com", "@googlemail.com"))
 
         if is_gmail:
-            # Do not collect the Gmail password. Google handles authentication
-            # and consent in the browser; NOVA receives only the OAuth result.
-            self.add_message("NOVA", f"Opening secure Google sign-in for {address}…")
+            self.add_message("NOVA", "Opening secure Google sign-in…")
             self.set_state("THINKING")
 
             def gmail_work():
