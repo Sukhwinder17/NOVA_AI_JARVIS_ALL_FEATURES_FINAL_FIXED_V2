@@ -33,6 +33,7 @@ class NovaOrchestrator:
         self._last_provider = ""
         self._lock = threading.Lock()
         self._last_files = False
+        self._pending_sms_schedule = None
 
     def set_attachment(self, file_path: str):
         self.task_manager.set_attachment(file_path)
@@ -117,34 +118,88 @@ class NovaOrchestrator:
         if re.search(phone, low) and re.search(r"\b(?:info|information|details|model|android version)\b", low):
             return self._run("phone_manager", {"action": "info"})
 
+        # Complete a two-step scheduled SMS request. NOVA first asks for the
+        # message body, then accepts any natural wording as the message and stores
+        # it on the phone for the requested time.
+        if self._pending_sms_schedule:
+            if re.fullmatch(r"(?:cancel|nevermind|never mind|stop)", low):
+                self._pending_sms_schedule = None
+                return "Scheduled SMS cancelled."
+            pending = self._pending_sms_schedule
+            self._pending_sms_schedule = None
+            return self._run("phone_manager", {
+                "action": "schedule_sms",
+                "recipient": pending["recipient"],
+                "message": t,
+                "trigger_at_ms": pending["trigger_at_ms"],
+            })
+
         # Scheduled SMS commands. The schedule is stored on the phone, so the
         # laptop/ADB connection is needed only while creating it.
+        # A two-step form is also supported:
+        #   "send SMS to 123... at 7:30 PM"
+        #   NOVA: "Type your message."
+        #   User: "my full message in any words"
+        no_body_patterns = [
+            r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)\s+(?:(?P<day>tomorrow)\s+)?at\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?$""",
+            r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+at\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)$""",
+        ]
+
+        def _scheduled_target(match):
+            hour = int(match.group("hour"))
+            minute = int(match.group("minute") or 0)
+            ampm = (match.group("ampm") or "").lower()
+
+            if ampm:
+                if hour < 1 or hour > 12 or minute > 59:
+                    raise ValueError
+                if ampm == "pm" and hour != 12:
+                    hour += 12
+                elif ampm == "am" and hour == 12:
+                    hour = 0
+            elif hour > 23 or minute > 59:
+                raise ValueError
+
+            now = datetime.now().astimezone()
+            target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if match.groupdict().get("day") == "tomorrow":
+                target += timedelta(days=1)
+            elif target <= now:
+                target += timedelta(days=1)
+
+            return target
+
+        for pattern in no_body_patterns:
+            m = re.match(pattern, t, re.I)
+            if m:
+                try:
+                    target = _scheduled_target(m)
+                    self._pending_sms_schedule = {
+                        "recipient": m.group("recipient").strip(),
+                        "trigger_at_ms": int(target.timestamp() * 1000),
+                    }
+                    when = target.strftime("%Y-%m-%d %I:%M %p")
+                    return (
+                        f"Sure. Type your message now. I will schedule the SMS to "
+                        f"{m.group('recipient').strip()} for {when}."
+                    )
+                except ValueError:
+                    return "Please give me a valid time, such as 7:30 PM."
+
         scheduled_sms_patterns = [
             r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)\s+(?:(?P<day>tomorrow)\s+)?at\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?\s+(?:saying|say|that\s+says|:)\s*["']?(?P<message>.+?)["']?$""",
             r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+at\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)\s+(?:saying|say|that\s+says|:)\s*["']?(?P<message>.+?)["']?$""",
         ]
         for pattern in scheduled_sms_patterns:
             m = re.match(pattern, t, re.I)
-            if m and re.search(r"\b(?:tomorrow|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", low):
+            if m:
                 try:
-                    hour=int(m.group("hour"))
-                    minute=int(m.group("minute") or 0)
-                    ampm=(m.group("ampm") or "").lower()
-                    if ampm:
-                        if hour < 1 or hour > 12 or minute > 59: raise ValueError
-                        if ampm == "pm" and hour != 12: hour += 12
-                        if ampm == "am" and hour == 12: hour = 0
-                    elif hour > 23 or minute > 59:
-                        raise ValueError
-                    now=datetime.now().astimezone()
-                    target=now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-                    if m.groupdict().get("day") == "tomorrow" or target <= now:
-                        target += timedelta(days=1)
+                    target = _scheduled_target(m)
                     return self._run("phone_manager", {
-                        "action":"schedule_sms",
-                        "recipient":m.group("recipient").strip(),
-                        "message":m.group("message").strip(),
-                        "trigger_at_ms":int(target.timestamp()*1000),
+                        "action": "schedule_sms",
+                        "recipient": m.group("recipient").strip(),
+                        "message": m.group("message").strip(),
+                        "trigger_at_ms": int(target.timestamp() * 1000),
                     })
                 except ValueError:
                     return "Please give me a valid time, such as 7:30 PM."
