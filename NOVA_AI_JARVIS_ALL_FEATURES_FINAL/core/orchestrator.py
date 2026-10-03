@@ -116,6 +116,20 @@ class NovaOrchestrator:
         if re.search(phone, low) and re.search(r"\b(?:info|information|details|model|android version)\b", low):
             return self._run("phone_manager", {"action": "info"})
 
+        # Native SMS commands. These open the phone's real SMS composer with the
+        # recipient and message filled in, instead of creating a NOVA notification.
+        sms_patterns = [
+            r"^(?:send\\s+(?:an?\\s+)?sms|send\\s+(?:a\\s+)?text(?:\\s+message)?|sms)\\s+(?:to\\s+)?(?P<recipient>\\+?\\d[\\d\\s().-]{4,}?)\\s+(?:saying|say|that\\s+says|:|-)\\s*[\"']?(?P<message>.+?)[\"']?$",
+        ]
+        for pattern in sms_patterns:
+            m = re.match(pattern, t, re.I)
+            if m:
+                return self._run("phone_manager", {
+                    "action": "send_sms",
+                    "recipient": m.group("recipient").strip(),
+                    "message": m.group("message").strip(),
+                })
+
         if re.search(r"\b(?:send|show)\b", low) and re.search(r"\bnotification\b", low) and re.search(phone, low):
             msg = re.sub(r"^.*?\bnotification\b\s*(?:to\s+(?:my\s+)?phone)?\s*(?:saying|that says|message)?\s*", "", t, flags=re.I).strip(" :")
             return self._run("phone_manager", {"action": "notify", "message": msg or "NOVA AI notification"})
