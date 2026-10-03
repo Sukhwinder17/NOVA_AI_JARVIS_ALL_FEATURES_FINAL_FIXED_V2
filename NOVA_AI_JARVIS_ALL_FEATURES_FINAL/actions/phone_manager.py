@@ -26,8 +26,9 @@ TOOL = {
         "Control a connected Android phone over wireless or USB ADB: connect, "
         "battery/status, device info, notifications, background SMS sending, open URLs, "
         "launch common apps, phone screenshots, clipboard read/write, volume controls, "
-        "media controls, and disconnect. For SMS, open the phone's native Messages "
-        "composer with the recipient and exact message filled in; the user taps Send."
+        "media controls, and disconnect. Immediate SMS can be sent in the background; "
+        "scheduled SMS are stored on the phone and open the native Messages composer "
+        "at the scheduled time with the recipient and exact message ready."
     ),
     "parameters": {
         "type": "OBJECT",
