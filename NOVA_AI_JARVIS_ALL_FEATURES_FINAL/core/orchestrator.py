@@ -155,7 +155,7 @@ class NovaOrchestrator:
                 media_action = "play"
             return self._run("phone_manager", {"action": "media", "media_action": media_action})
 
-        if re.search(phone, low) and re.search(r"\b(?:open|launch|start)\b", low):
+        if re.search(phone, low) and re.search(r"\b(?:open|launch|start)\b", low) and not re.search(r"https?://", low):
             m = re.search(r"\b(?:open|launch|start)\s+(.+?)(?:\s+on\s+(?:my\s+)?phone)?$", t, re.I)
             if m:
                 app = m.group(1).strip()
