@@ -70,7 +70,9 @@ public class NovaScheduledSmsReceiver extends BroadcastReceiver {
         }
 
         try {
-            SmsManager manager = SmsManager.getDefault();
+            SmsManager manager = getSmsManager(context);
+            if (manager == null) return;
+
             ArrayList<String> parts = manager.divideMessage(data[1]);
 
             if (parts.size() <= 1) {
@@ -86,6 +88,24 @@ public class NovaScheduledSmsReceiver extends BroadcastReceiver {
         } catch (Exception ignored) {
             // The PendingIntent callback reports carrier-level send results
             // when Android can deliver it.
+        }
+    }
+
+    private SmsManager getSmsManager(Context context) {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 22) {
+                int subId = android.telephony.SubscriptionManager.getDefaultSmsSubscriptionId();
+                if (subId != android.telephony.SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                    return SmsManager.getSmsManagerForSubscriptionId(subId);
+                }
+            }
+            return SmsManager.getDefault();
+        } catch (Exception e) {
+            try {
+                return SmsManager.getDefault();
+            } catch (Exception ignored) {
+                return null;
+            }
         }
     }
 
