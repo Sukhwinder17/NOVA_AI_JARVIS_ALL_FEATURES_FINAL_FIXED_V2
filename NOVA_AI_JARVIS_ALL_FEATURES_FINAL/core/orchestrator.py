@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import threading
+from datetime import datetime, timedelta
 
 from .action_loader import discover_actions
 from .plugin_loader import discover_plugins
@@ -115,6 +116,38 @@ class NovaOrchestrator:
 
         if re.search(phone, low) and re.search(r"\b(?:info|information|details|model|android version)\b", low):
             return self._run("phone_manager", {"action": "info"})
+
+        # Scheduled SMS commands. The schedule is stored on the phone, so the
+        # laptop/ADB connection is needed only while creating it.
+        scheduled_sms_patterns = [
+            r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)\s+(?:(?P<day>tomorrow)\s+)?at\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?\s+(?:saying|say|that\s+says|:)\s*["']?(?P<message>.+?)["']?$""",
+            r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+at\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)\s+(?:saying|say|that\s+says|:)\s*["']?(?P<message>.+?)["']?$""",
+        ]
+        for pattern in scheduled_sms_patterns:
+            m = re.match(pattern, t, re.I)
+            if m and re.search(r"\b(?:tomorrow|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", low):
+                try:
+                    hour=int(m.group("hour"))
+                    minute=int(m.group("minute") or 0)
+                    ampm=(m.group("ampm") or "").lower()
+                    if ampm:
+                        if hour < 1 or hour > 12 or minute > 59: raise ValueError
+                        if ampm == "pm" and hour != 12: hour += 12
+                        if ampm == "am" and hour == 12: hour = 0
+                    elif hour > 23 or minute > 59:
+                        raise ValueError
+                    now=datetime.now().astimezone()
+                    target=now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                    if m.groupdict().get("day") == "tomorrow" or target <= now:
+                        target += timedelta(days=1)
+                    return self._run("phone_manager", {
+                        "action":"schedule_sms",
+                        "recipient":m.group("recipient").strip(),
+                        "message":m.group("message").strip(),
+                        "trigger_at_ms":int(target.timestamp()*1000),
+                    })
+                except ValueError:
+                    return "Please give me a valid time, such as 7:30 PM."
 
         # Native SMS commands. These open the phone's real SMS composer with the
         # recipient and message filled in, instead of creating a NOVA notification.
