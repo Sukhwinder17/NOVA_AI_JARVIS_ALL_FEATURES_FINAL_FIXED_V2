@@ -44,7 +44,23 @@ public class NovaScheduledSmsReceiver extends BroadcastReceiver {
         String[] data = lookup(context, requestId);
         if (data == null) return;
 
-        // Remove the one-shot schedule before sending so it cannot fire twice.
+        // Safety guard: if the alarm wakes the process early, do NOT send yet.
+        // Re-arm for the remaining time. This guarantees the SMS cannot be sent
+        // before the requested wall-clock time.
+        long scheduledAt;
+        try {
+            scheduledAt = Long.parseLong(data[2]);
+        } catch (Exception e) {
+            scheduledAt = 0L;
+        }
+
+        long now = System.currentTimeMillis();
+        if (scheduledAt > now + 1000L) {
+            NovaSmsScheduler.rescheduleExisting(context, requestId, scheduledAt);
+            return;
+        }
+
+        // Remove the one-shot schedule immediately before sending so it cannot fire twice.
         NovaSmsScheduler.remove(context, requestId);
 
         if (android.os.Build.VERSION.SDK_INT >= 23
@@ -140,7 +156,8 @@ public class NovaScheduledSmsReceiver extends BroadcastReceiver {
 
                 return new String[]{
                         item.optString("recipient", ""),
-                        item.optString("message", "")
+                        item.optString("message", ""),
+                        item.optString("trigger_at", "0")
                 };
             }
         } catch (Exception ignored) {
