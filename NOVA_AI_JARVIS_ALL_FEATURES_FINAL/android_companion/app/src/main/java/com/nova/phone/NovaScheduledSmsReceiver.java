@@ -60,6 +60,13 @@ public class NovaScheduledSmsReceiver extends BroadcastReceiver {
             return;
         }
 
+        // If the target is more than a small tolerance in the future, do not
+        // send early. The scheduler will re-arm the alarm for the remaining time.
+        if (scheduledAt > now) {
+            NovaSmsScheduler.rescheduleExisting(context, requestId, scheduledAt);
+            return;
+        }
+
         // Remove the one-shot schedule immediately before sending so it cannot fire twice.
         NovaSmsScheduler.remove(context, requestId);
 
