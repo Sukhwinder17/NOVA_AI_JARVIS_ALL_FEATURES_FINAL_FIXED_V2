@@ -174,6 +174,63 @@ def notify(title: str, message: str) -> str:
     _run("-s", serial, "shell", "cmd", "notification", "post", "-S", "bigtext", "nova_ai", title, message)
     return "🔔 Notification sent to your phone."
 
+def schedule_sms(recipient: str, message: str, trigger_at_ms: int) -> str:
+    """Store a one-time SMS schedule on the phone. At the scheduled time the phone
+    opens its native SMS composer with the recipient/message prefilled."""
+    serial = _serial()
+    if not serial:
+        return "No Android phone connected."
+
+    raw_recipient = str(recipient or "").strip()
+    message = str(message or "").strip()
+    if not raw_recipient:
+        return "Please specify the SMS recipient phone number."
+    if not message:
+        return "Please specify the SMS message."
+
+    cleaned = re.sub(r"[^0-9+]", "", raw_recipient)
+    if cleaned.startswith("++") or ("+" in cleaned[1:]):
+        return "Please provide a valid SMS phone number."
+    if len(re.sub(r"\D", "", cleaned)) < 5:
+        return "Please provide a valid SMS phone number."
+
+    try:
+        trigger = int(trigger_at_ms)
+    except Exception:
+        return "Invalid scheduled time."
+
+    if trigger <= int(time.time() * 1000) + 1000:
+        return "The scheduled time must be in the future."
+
+    request_id = uuid.uuid4().hex
+    try:
+        out = _run(
+            "-s", serial, "shell", "am", "broadcast",
+            "-n", "com.nova.phone/.NovaScheduledSmsReceiver",
+            "-a", "com.nova.phone.SCHEDULE_SMS",
+            "--es", "request_id", request_id,
+            "--es", "recipient", cleaned,
+            "--es", "message", message,
+            "--el", "trigger_at", str(trigger),
+            timeout=20,
+        )
+    except Exception as exc:
+        return f"Could not schedule SMS: {exc}"
+
+    lower = (out or "").lower()
+    if "result=3" in lower:
+        return "Scheduled SMS needs the phone's Alarms & reminders access. Open NOVA Phone Companion and allow it."
+    if "result=5" in lower:
+        return f"SMS scheduling failed on the phone: {out}"
+    if "result=2" in lower:
+        return f"SMS schedule was rejected: {out}"
+    if "result=-1" not in lower and "result=0" not in lower:
+        return f"SMS schedule did not start correctly: {out or 'unknown ADB result'}"
+
+    from datetime import datetime
+    when = datetime.fromtimestamp(trigger / 1000).astimezone().strftime("%Y-%m-%d %I:%M %p")
+    return f"⏰ SMS scheduled on your phone for {when} to {raw_recipient}. At that time, the native SMS composer will open with the message ready to send."
+
 def send_sms(recipient: str, message: str) -> str:
     """Send a real SMS in the background and wait for the Android telephony result."""
     serial = _serial()
@@ -359,6 +416,11 @@ def phone_command(action: str, **kwargs) -> str:
     if action in ("status", "battery"): return status()
     if action == "info": return info()
     if action == "notify": return notify(str(kwargs.get("title", "NOVA AI")), str(kwargs.get("message", "")))
+    if action in ("schedule_sms", "sms_schedule"): return schedule_sms(
+        str(kwargs.get("recipient", kwargs.get("number", ""))),
+        str(kwargs.get("message", "")),
+        int(kwargs.get("trigger_at_ms", 0)),
+    )
     if action in ("send_sms", "sms", "text_message"): return send_sms(
         str(kwargs.get("recipient", kwargs.get("number", ""))),
         str(kwargs.get("message", "")),
