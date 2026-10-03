@@ -6,13 +6,27 @@ from datetime import datetime, timezone
 
 import requests
 
-BASE_URL = os.getenv("SMSGATE_BASE_URL", "https://api.sms-gate.app/3rdparty/v1").rstrip("/")
+# Cloud API (used for scheduling and remote access).
+CLOUD_BASE_URL = os.getenv(
+    "SMSGATE_BASE_URL",
+    "https://api.sms-gate.app/3rdparty/v1",
+).rstrip("/")
+
+# Local Server API (used when the Android phone and laptop are on the same
+# Wi-Fi/hotspot). The local API uses the legacy /message endpoint.
+MODE = os.getenv("SMSGATE_MODE", "cloud").strip().lower()
+LOCAL_BASE_URL = os.getenv("SMSGATE_LOCAL_URL", "").strip().rstrip("/")
+
 LOGIN = os.getenv("SMSGATE_LOGIN", "").strip()
 PASSWORD = os.getenv("SMSGATE_PASSWORD", "").strip()
 
 
 def configured() -> bool:
-    return bool(LOGIN and PASSWORD)
+    if not LOGIN or not PASSWORD:
+        return False
+    if MODE == "local":
+        return bool(LOCAL_BASE_URL)
+    return bool(CLOUD_BASE_URL)
 
 
 def _number(value: str) -> str:
@@ -27,12 +41,22 @@ def _number(value: str) -> str:
 
 
 def _request(method: str, path: str, **kwargs):
-    if not configured():
+    if not LOGIN or not PASSWORD:
         raise RuntimeError("SMSGate is not configured. Set SMSGATE_LOGIN and SMSGATE_PASSWORD in .env.")
+
+    if MODE == "local":
+        if not LOCAL_BASE_URL:
+            raise RuntimeError(
+                "Local SMSGate mode needs SMSGATE_LOCAL_URL, for example "
+                "http://192.168.43.1:8080"
+            )
+        url = f"{LOCAL_BASE_URL}/{path.lstrip('/')}"
+    else:
+        url = f"{CLOUD_BASE_URL}/{path.lstrip('/')}"
 
     response = requests.request(
         method,
-        f"{BASE_URL}/{path.lstrip('/')}",
+        url,
         auth=(LOGIN, PASSWORD),
         timeout=25,
         **kwargs,
@@ -52,6 +76,13 @@ def _request(method: str, path: str, **kwargs):
         return {}
 
 
+def _local_send_payload(to: str, body: str) -> dict:
+    return {
+        "textMessage": {"text": body},
+        "phoneNumbers": [to],
+    }
+
+
 def send_sms(recipient: str, message: str) -> str:
     try:
         to = _number(recipient)
@@ -63,25 +94,37 @@ def send_sms(recipient: str, message: str) -> str:
         return "Please provide the SMS message."
 
     try:
-        data = _request(
-            "POST",
-            "/messages",
-            json={
-                "textMessage": {"text": body},
-                "phoneNumbers": [to],
-                "withDeliveryReport": True,
-            },
-        )
+        if MODE == "local":
+            data = _request(
+                "POST",
+                "/message",
+                json=_local_send_payload(to, body),
+            )
+        else:
+            data = _request(
+                "POST",
+                "/messages",
+                json={
+                    "textMessage": {"text": body},
+                    "phoneNumbers": [to],
+                    "withDeliveryReport": True,
+                },
+            )
     except Exception as exc:
         return f"Could not send SMS through SMSGate: {exc}"
 
     mid = data.get("id") or data.get("messageId") or data.get("smsId") or ""
     state = data.get("state") or data.get("status") or "Queued"
     suffix = f" Message ID: {mid}." if mid else ""
-    return f"📨 SMS submitted through SMSGate to {to}. Status: {state}.{suffix}"
+    route = "phone hotspot/local server" if MODE == "local" else "SMSGate cloud"
+    return f"📨 SMS submitted through {route} to {to}. Status: {state}.{suffix}"
 
 
 def schedule_sms(recipient: str, message: str, send_at: datetime) -> str:
+    # The current official SMSGate Local Server does not provide scheduled
+    # dispatch. Scheduled messages therefore stay on the Cloud API path.
+    # This keeps the existing NOVA two-step scheduling feature working even
+    # when immediate SMS is configured for the phone hotspot.
     try:
         to = _number(recipient)
     except ValueError as exc:
@@ -99,7 +142,7 @@ def schedule_sms(recipient: str, message: str, send_at: datetime) -> str:
         return "The scheduled time must be in the future."
 
     try:
-        data = _request(
+        data = _request_cloud(
             "POST",
             "/messages",
             json={
@@ -110,16 +153,45 @@ def schedule_sms(recipient: str, message: str, send_at: datetime) -> str:
             },
         )
     except Exception as exc:
-        return f"Could not schedule SMS through SMSGate: {exc}"
+        return f"Could not schedule SMS through SMSGate Cloud: {exc}"
 
     mid = data.get("id") or data.get("messageId") or data.get("smsId") or ""
     state = data.get("state") or data.get("status") or "Pending"
     local_time = send_at.astimezone().strftime("%Y-%m-%d %I:%M:%S %p %Z")
     suffix = f" Message ID: {mid}." if mid else ""
     return (
-        f"⏰ SMS scheduled through SMSGate for {local_time} to {to}. "
-        f"The laptop does not need to stay connected. Status: {state}.{suffix}"
+        f"⏰ SMS scheduled through SMSGate Cloud for {local_time} to {to}. "
+        f"Status: {state}.{suffix}"
     )
+
+
+def _request_cloud(method: str, path: str, **kwargs):
+    if not LOGIN or not PASSWORD or not CLOUD_BASE_URL:
+        raise RuntimeError(
+            "SMSGate Cloud is not configured. Set SMSGATE_BASE_URL, "
+            "SMSGATE_LOGIN and SMSGATE_PASSWORD in .env."
+        )
+
+    response = requests.request(
+        method,
+        f"{CLOUD_BASE_URL}/{path.lstrip('/')}",
+        auth=(LOGIN, PASSWORD),
+        timeout=25,
+        **kwargs,
+    )
+
+    if not response.ok:
+        try:
+            payload = response.json()
+            detail = payload.get("message") or payload
+        except Exception:
+            detail = response.text or f"HTTP {response.status_code}"
+        raise RuntimeError(f"SMSGate Cloud HTTP {response.status_code}: {detail}")
+
+    try:
+        return response.json()
+    except Exception:
+        return {}
 
 
 def read_messages(limit: int = 20) -> str:
@@ -155,9 +227,9 @@ def cancel_message(message_id: str) -> str:
         return "Please provide the SMS message ID to cancel."
 
     try:
-        data = _request("DELETE", f"/messages/{mid}")
+        data = _request_cloud("DELETE", f"/messages/{mid}")
     except Exception as exc:
-        return f"Could not cancel SMS through SMSGate: {exc}"
+        return f"Could not cancel SMS through SMSGate Cloud: {exc}"
 
     state = data.get("state") or data.get("status") or "Cancellation requested"
     return f"🗑️ SMS cancellation requested for {mid}. Status: {state}."
