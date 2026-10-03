@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:theme="@style/AppTheme"
@@ -41,5 +43,19 @@
             android:name=".NovaSmsStatusReceiver"
             android:label="NOVA SMS Status Receiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".NovaScheduledSmsReceiver"
+            android:label="NOVA Scheduled SMS Receiver"
+            android:exported="true" />
+
+        <receiver
+            android:name=".NovaBootReceiver"
+            android:label="NOVA Boot Receiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
