@@ -36,5 +36,10 @@
                 <action android:name="com.nova.phone.SEND_SMS" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".NovaSmsStatusReceiver"
+            android:label="NOVA SMS Status Receiver"
+            android:exported="false" />
     </application>
 </manifest>
