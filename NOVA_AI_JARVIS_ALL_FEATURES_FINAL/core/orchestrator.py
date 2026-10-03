@@ -119,7 +119,7 @@ class NovaOrchestrator:
         # Native SMS commands. These open the phone's real SMS composer with the
         # recipient and message filled in, instead of creating a NOVA notification.
         sms_patterns = [
-            r"^(?:send\\s+(?:an?\\s+)?sms|send\\s+(?:a\\s+)?text(?:\\s+message)?|sms)\\s+(?:to\\s+)?(?P<recipient>\\+?\\d[\\d\\s().-]{4,}?)\\s+(?:saying|say|that\\s+says|:|-)\\s*[\"']?(?P<message>.+?)[\"']?$",
+            r"^(?:send\s+(?:an?\s+)?sms|send\s+(?:a\s+)?text(?:\s+message)?|sms)\s+(?:to\s+)?(?P<recipient>\+?\d[\d\s().-]{4,}?)\s+(?:saying|say|that\s+says|:|-)\s*["']?(?P<message>.+?)["']?$",
         ]
         for pattern in sms_patterns:
             m = re.match(pattern, t, re.I)
