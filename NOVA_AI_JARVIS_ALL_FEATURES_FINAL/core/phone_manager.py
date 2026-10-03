@@ -216,6 +216,7 @@ def schedule_sms(recipient: str, message: str, trigger_at_ms: int) -> str:
             "--es", "recipient", cleaned,
             "--es", "message", message,
             "--el", "delay_ms", str(delay_ms),
+            "--el", "trigger_at", str(trigger),
             timeout=20,
         )
     except Exception as exc:
