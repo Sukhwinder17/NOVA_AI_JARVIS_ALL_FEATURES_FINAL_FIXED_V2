@@ -23,7 +23,7 @@ TOOL = {
     "name": "phone_manager",
     "description": (
         "Control a connected Android phone over wireless or USB ADB: connect, "
-        "battery/status, device info, notifications, native SMS composer, open URLs, "
+        "battery/status, device info, notifications, background SMS sending, open URLs, "
         "launch common apps, phone screenshots, clipboard read/write, volume controls, "
         "media controls, and disconnect. For SMS, open the phone's native Messages "
         "composer with the recipient and exact message filled in; the user taps Send."
