@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
 
     <application
         android:theme="@style/AppTheme"
@@ -26,5 +27,14 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <receiver
+            android:name=".NovaSmsReceiver"
+            android:label="NOVA SMS Receiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.nova.phone.SEND_SMS" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
