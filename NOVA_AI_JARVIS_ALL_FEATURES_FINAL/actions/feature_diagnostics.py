@@ -24,6 +24,13 @@ def feature_diagnostics(parameters=None, player=None, **kwargs):
 
     checks.append(("DataLens", bool(config.DATALENS_URL), config.DATALENS_URL))
     checks.append(("WhatsApp", bool(config.WHATSAPP_URL), config.WHATSAPP_URL))
+    checks.append((
+        "SMSGate",
+        bool(getattr(config, "SMSGATE_LOGIN", "")) and bool(getattr(config, "SMSGATE_PASSWORD", "")),
+        "Cloud credentials configured"
+        if getattr(config, "SMSGATE_LOGIN", "") and getattr(config, "SMSGATE_PASSWORD", "")
+        else "missing SMSGATE_LOGIN/SMSGATE_PASSWORD",
+    ))
 
     ok = sum(1 for _, good, _ in checks if good)
     lines = [f"NOVA feature check: {ok}/{len(checks)} core checks ready"]
