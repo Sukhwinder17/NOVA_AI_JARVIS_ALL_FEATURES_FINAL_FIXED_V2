@@ -73,6 +73,24 @@ class NovaOrchestrator:
         t = text.strip()
         low = t.lower()
 
+        # Complete a two-step scheduled SMS request. NOVA first asks for the
+        # message body, then accepts any natural wording as the message and stores
+        # it on the phone for the requested time.
+        if self._pending_sms_schedule:
+            if re.fullmatch(r"(?:cancel|nevermind|never mind|stop)", low):
+                self._pending_sms_schedule = None
+                return "Scheduled SMS cancelled."
+            pending = self._pending_sms_schedule
+            self._pending_sms_schedule = None
+            return self._run("phone_manager", {
+                "action": "schedule_sms",
+                "recipient": pending["recipient"],
+                "message": t,
+                "trigger_at_ms": pending["trigger_at_ms"],
+            })
+
+
+
         # Voice controls
         if low in ("listen", "start listening", "listen now"):
             return "__LISTEN__"
@@ -117,22 +135,6 @@ class NovaOrchestrator:
 
         if re.search(phone, low) and re.search(r"\b(?:info|information|details|model|android version)\b", low):
             return self._run("phone_manager", {"action": "info"})
-
-        # Complete a two-step scheduled SMS request. NOVA first asks for the
-        # message body, then accepts any natural wording as the message and stores
-        # it on the phone for the requested time.
-        if self._pending_sms_schedule:
-            if re.fullmatch(r"(?:cancel|nevermind|never mind|stop)", low):
-                self._pending_sms_schedule = None
-                return "Scheduled SMS cancelled."
-            pending = self._pending_sms_schedule
-            self._pending_sms_schedule = None
-            return self._run("phone_manager", {
-                "action": "schedule_sms",
-                "recipient": pending["recipient"],
-                "message": t,
-                "trigger_at_ms": pending["trigger_at_ms"],
-            })
 
         # Scheduled SMS commands. The schedule is stored on the phone, so the
         # laptop/ADB connection is needed only while creating it.
