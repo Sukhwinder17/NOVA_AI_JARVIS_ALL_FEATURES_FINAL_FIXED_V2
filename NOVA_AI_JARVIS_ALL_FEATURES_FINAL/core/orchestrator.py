@@ -82,11 +82,12 @@ class NovaOrchestrator:
                 return "Scheduled SMS cancelled."
             pending = self._pending_sms_schedule
             self._pending_sms_schedule = None
-            return self._run("phone_manager", {
-                "action": "schedule_sms",
+            return self._run("twilio_sms", {
                 "recipient": pending["recipient"],
                 "message": t,
-                "trigger_at_ms": pending["trigger_at_ms"],
+                "send_at": datetime.fromtimestamp(
+                    pending["trigger_at_ms"] / 1000
+                ).astimezone().isoformat(),
             })
 
 
