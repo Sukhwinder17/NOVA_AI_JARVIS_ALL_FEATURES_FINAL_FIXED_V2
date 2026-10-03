@@ -57,16 +57,20 @@ public class NovaScheduledSmsReceiver extends BroadcastReceiver {
         long delayMs = intent.getLongExtra("delay_ms", -1L);
         long triggerAt = intent.getLongExtra("trigger_at", 0L);
 
-        // Prefer a relative delay so a small clock difference between laptop
-        // and phone cannot turn a valid schedule into a rejected one.
+        // Prefer relative delay to avoid laptop/phone clock skew.
+        // If delay_ms is missing (for example an older NOVA desktop build),
+        // fall back to the absolute timestamp. If that timestamp is already
+        // in the past, schedule it a few seconds from now instead of rejecting
+        // a valid command.
         if (delayMs > 0L) {
             triggerAt = System.currentTimeMillis() + delayMs;
+        } else if (triggerAt <= System.currentTimeMillis()) {
+            triggerAt = System.currentTimeMillis() + 3000L;
         }
 
         if (requestId == null || requestId.trim().isEmpty()
                 || recipient == null || recipient.trim().isEmpty()
-                || message == null || message.trim().isEmpty()
-                || triggerAt <= System.currentTimeMillis()) {
+                || message == null || message.trim().isEmpty()) {
             setResultCode(2);
             return;
         }
