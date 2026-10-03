@@ -105,17 +105,81 @@ class NovaOrchestrator:
             return "Tell me what to search for in your email."
 
         # Android phone bridge commands.
-        if re.search(r"\b(?:connect|pair|link)\b", low) and re.search(r"\b(?:phone|android|mobile)\b", low):
+        phone = r"\b(?:phone|android|mobile)\b"
+        if re.search(r"\b(?:connect|pair|link)\b", low) and re.search(phone, low):
             address_match = re.search(r"(\d{1,3}(?:\.\d{1,3}){3}:\d+)", t)
             return self._run("phone_manager", {"action": "connect", "address": address_match.group(1) if address_match else ""})
-        if re.search(r"\b(?:phone|android|mobile)\b", low) and re.search(r"\b(?:status|battery)\b", low):
+
+        if re.search(phone, low) and re.search(r"\b(?:status|battery|charge|charging)\b", low):
             return self._run("phone_manager", {"action": "status"})
-        if re.search(r"\b(?:send|show)\b", low) and re.search(r"\bnotification\b", low) and re.search(r"\b(?:phone|android|mobile)\b", low):
-            msg = re.sub(r"^.*?\bnotification\b\s*(?:to\s+(?:my\s+)?phone)?\s*", "", t, flags=re.I).strip(" :")
+
+        if re.search(phone, low) and re.search(r"\b(?:info|information|details|model|android version)\b", low):
+            return self._run("phone_manager", {"action": "info"})
+
+        if re.search(r"\b(?:send|show)\b", low) and re.search(r"\bnotification\b", low) and re.search(phone, low):
+            msg = re.sub(r"^.*?\bnotification\b\s*(?:to\s+(?:my\s+)?phone)?\s*(?:saying|that says|message)?\s*", "", t, flags=re.I).strip(" :")
             return self._run("phone_manager", {"action": "notify", "message": msg or "NOVA AI notification"})
-        if re.search(r"\b(?:phone|android|mobile)\b", low) and re.search(r"\bscreenshot\b", low):
+
+        if re.search(phone, low) and re.search(r"\bscreenshot\b", low):
             return self._run("phone_manager", {"action": "screenshot"})
-        if re.search(r"\b(?:disconnect|unlink)\b", low) and re.search(r"\b(?:phone|android|mobile)\b", low):
+
+        if re.search(phone, low) and re.search(r"\b(?:clipboard|clip board)\b", low):
+            if re.search(r"\b(?:read|show|get|what(?:'s| is)?)\b", low):
+                return self._run("phone_manager", {"action": "clipboard_get"})
+            m = re.search(r"(?:copy|put|set)\s+(?:this|text)?\s*(?:to|on|in)\s+(?:my\s+)?phone(?:'s)?\s+clipboard\s*[:,-]?\s*(.+)$", t, re.I)
+            if not m:
+                m = re.search(r"(?:copy|put)\s+(.+?)\s+(?:to|on)\s+(?:my\s+)?phone(?:'s)?\s+clipboard$", t, re.I)
+            if m:
+                return self._run("phone_manager", {"action": "clipboard_set", "text": m.group(1).strip()})
+            return "Tell me what you want copied to your phone clipboard."
+
+        if re.search(phone, low) and re.search(r"\b(?:volume|sound)\b", low):
+            if re.search(r"\b(?:up|increase|louder)\b", low):
+                direction = "up"
+            elif re.search(r"\b(?:down|decrease|lower|quieter)\b", low):
+                direction = "down"
+            elif re.search(r"\b(?:mute|silent)\b", low):
+                direction = "mute"
+            else:
+                return "Say volume up, volume down, or mute on my phone."
+            return self._run("phone_manager", {"action": "volume", "direction": direction})
+
+        if re.search(phone, low) and re.search(r"\b(?:play|pause|next|previous|prev)\b", low):
+            if re.search(r"\bnext\b", low):
+                media_action = "next"
+            elif re.search(r"\b(?:previous|prev)\b", low):
+                media_action = "previous"
+            elif re.search(r"\bpause\b", low):
+                media_action = "pause"
+            else:
+                media_action = "play"
+            return self._run("phone_manager", {"action": "media", "media_action": media_action})
+
+        if re.search(phone, low) and re.search(r"\b(?:open|launch|start)\b", low):
+            m = re.search(r"\b(?:open|launch|start)\s+(.+?)(?:\s+on\s+(?:my\s+)?phone)?$", t, re.I)
+            if m:
+                app = m.group(1).strip()
+                if app.lower() not in ("phone", "mobile", "android"):
+                    return self._run("phone_manager", {"action": "launch_app", "app": app})
+
+        if re.search(phone, low) and re.search(r"\b(?:open|go to|visit)\b", low) and re.search(r"https?://|\b(?:www\.|youtube|google|instagram|facebook|whatsapp|spotify)\b", low):
+            url = re.search(r"https?://\S+", t)
+            if url:
+                target = url.group(0)
+            else:
+                targets = {
+                    "youtube": "https://www.youtube.com/",
+                    "google": "https://www.google.com/",
+                    "instagram": "https://www.instagram.com/",
+                    "facebook": "https://www.facebook.com/",
+                    "whatsapp": "https://web.whatsapp.com/",
+                    "spotify": "https://open.spotify.com/",
+                }
+                target = next((u for k, u in targets.items() if k in low), "")
+            if target:
+                return self._run("phone_manager", {"action": "open_url", "url": target})
+
+        if re.search(r"\b(?:disconnect|unlink)\b", low) and re.search(phone, low):
             return self._run("phone_manager", {"action": "disconnect"})
 
         # Email intelligence commands.
