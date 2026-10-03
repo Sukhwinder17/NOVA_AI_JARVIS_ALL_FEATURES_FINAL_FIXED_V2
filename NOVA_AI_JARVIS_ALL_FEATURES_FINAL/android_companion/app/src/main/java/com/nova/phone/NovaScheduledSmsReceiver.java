@@ -54,7 +54,14 @@ public class NovaScheduledSmsReceiver extends BroadcastReceiver {
         String requestId = intent.getStringExtra(EXTRA_REQUEST_ID);
         String recipient = intent.getStringExtra(EXTRA_RECIPIENT);
         String message = intent.getStringExtra(EXTRA_MESSAGE);
+        long delayMs = intent.getLongExtra("delay_ms", -1L);
         long triggerAt = intent.getLongExtra("trigger_at", 0L);
+
+        // Prefer a relative delay so a small clock difference between laptop
+        // and phone cannot turn a valid schedule into a rejected one.
+        if (delayMs > 0L) {
+            triggerAt = System.currentTimeMillis() + delayMs;
+        }
 
         if (requestId == null || requestId.trim().isEmpty()
                 || recipient == null || recipient.trim().isEmpty()
