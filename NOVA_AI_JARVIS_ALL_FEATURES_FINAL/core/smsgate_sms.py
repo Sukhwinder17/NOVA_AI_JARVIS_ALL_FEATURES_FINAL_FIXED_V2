@@ -35,9 +35,22 @@ def _number(value: str) -> str:
     if not cleaned or cleaned.startswith("++") or ("+" in cleaned[1:]):
         raise ValueError("Please provide a valid SMS phone number.")
     digits = re.sub(r"\D", "", cleaned)
-    if len(digits) < 7:
+
+    # India-friendly normalization:
+    # 9501276527  -> +919501276527
+    # 09501276527 -> +919501276527
+    # 919501276527 -> +919501276527
+    # +919501276527 stays unchanged
+    if len(digits) == 10:
+        digits = "91" + digits
+    elif len(digits) == 11 and digits.startswith("0"):
+        digits = "91" + digits[1:]
+    elif len(digits) == 12 and digits.startswith("91"):
+        pass
+    elif len(digits) < 7:
         raise ValueError("Please provide a valid SMS phone number.")
-    return cleaned if cleaned.startswith("+") else "+" + digits
+
+    return "+" + digits
 
 
 def _request(method: str, path: str, **kwargs):
