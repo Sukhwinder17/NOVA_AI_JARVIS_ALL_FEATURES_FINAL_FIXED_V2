@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
+import android.os.SystemClock;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -22,13 +23,8 @@ public final class NovaSmsScheduler {
         return alarms != null && alarms.canScheduleExactAlarms();
     }
 
-    public static void schedule(
-            Context context,
-            String requestId,
-            String recipient,
-            String message,
-            long triggerAtMillis
-    ) {
+    public static void schedule(Context context, String requestId, String recipient,
+                                  String message, long triggerAtMillis, long delayMs) {
         if (!canScheduleExact(context)) {
             throw new SecurityException("SCHEDULE_EXACT_ALARM access is not enabled.");
         }
@@ -51,7 +47,15 @@ public final class NovaSmsScheduler {
             updated.put(item);
 
             writeItems(context, updated);
-            arm(context, requestId, triggerAtMillis);
+
+            // Use elapsed realtime for the initial schedule. This is immune to
+            // laptop/phone wall-clock differences, so an SMS cannot fire early
+            // because the two devices have different clocks.
+            if (delayMs > 0L) {
+                armAfterDelay(context, requestId, delayMs);
+            } else {
+                armAtWallClock(context, requestId, triggerAtMillis);
+            }
         } catch (SecurityException e) {
             throw e;
         } catch (Exception e) {
@@ -94,33 +98,50 @@ public final class NovaSmsScheduler {
                 long trigger = item.optLong("trigger_at", 0L);
                 if (id.isEmpty()) continue;
 
-                if (trigger <= now) trigger = now + 2000L;
-                arm(context, id, trigger);
+                // An old one-shot schedule must never be fired after reboot.
+                if (trigger <= now) {
+                    remove(context, id);
+                    continue;
+                }
+                armAtWallClock(context, id, trigger);
             }
         } catch (Exception ignored) {
         }
     }
 
-    private static void arm(Context context, String requestId, long triggerAtMillis) {
-        AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
-        if (alarms == null) throw new IllegalStateException("AlarmManager unavailable.");
-
+    private static PendingIntent pendingIntent(Context context, String requestId) {
         Intent intent = new Intent(context, NovaScheduledSmsReceiver.class);
         intent.setAction(NovaScheduledSmsReceiver.ACTION_SCHEDULED_SMS);
         intent.setData(Uri.parse("novasms:" + requestId));
         intent.putExtra(NovaScheduledSmsReceiver.EXTRA_REQUEST_ID, requestId);
 
-        PendingIntent pending = PendingIntent.getBroadcast(
+        return PendingIntent.getBroadcast(
                 context,
                 requestCode(requestId),
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
+    }
+
+    private static void armAfterDelay(Context context, String requestId, long delayMs) {
+        AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (alarms == null) throw new IllegalStateException("AlarmManager unavailable.");
+
+        alarms.setExactAndAllowWhileIdle(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                SystemClock.elapsedRealtime() + delayMs,
+                pendingIntent(context, requestId)
+        );
+    }
+
+    private static void armAtWallClock(Context context, String requestId, long triggerAtMillis) {
+        AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (alarms == null) throw new IllegalStateException("AlarmManager unavailable.");
 
         alarms.setExactAndAllowWhileIdle(
                 AlarmManager.RTC_WAKEUP,
                 triggerAtMillis,
-                pending
+                pendingIntent(context, requestId)
         );
     }
 
