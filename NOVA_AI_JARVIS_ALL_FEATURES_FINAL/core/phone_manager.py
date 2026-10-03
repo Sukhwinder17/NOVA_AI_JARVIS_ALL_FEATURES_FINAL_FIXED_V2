@@ -175,8 +175,10 @@ def notify(title: str, message: str) -> str:
     return "🔔 Notification sent to your phone."
 
 def schedule_sms(recipient: str, message: str, trigger_at_ms: int) -> str:
-    """Store a one-time SMS schedule on the phone. At the scheduled time the phone
-    opens its native SMS composer with the recipient/message prefilled."""
+    """Store a one-time SMS schedule on the phone.
+    Uses a relative delay when communicating with the phone so clock skew
+    between the laptop and phone cannot reject a valid future schedule.
+    """
     serial = _serial()
     if not serial:
         return "No Android phone connected."
@@ -199,7 +201,9 @@ def schedule_sms(recipient: str, message: str, trigger_at_ms: int) -> str:
     except Exception:
         return "Invalid scheduled time."
 
-    if trigger <= int(time.time() * 1000) + 1000:
+    now_ms = int(time.time() * 1000)
+    delay_ms = trigger - now_ms
+    if delay_ms <= 1000:
         return "The scheduled time must be in the future."
 
     request_id = uuid.uuid4().hex
@@ -211,7 +215,7 @@ def schedule_sms(recipient: str, message: str, trigger_at_ms: int) -> str:
             "--es", "request_id", request_id,
             "--es", "recipient", cleaned,
             "--es", "message", message,
-            "--el", "trigger_at", str(trigger),
+            "--el", "delay_ms", str(delay_ms),
             timeout=20,
         )
     except Exception as exc:
@@ -229,7 +233,7 @@ def schedule_sms(recipient: str, message: str, trigger_at_ms: int) -> str:
 
     from datetime import datetime
     when = datetime.fromtimestamp(trigger / 1000).astimezone().strftime("%Y-%m-%d %I:%M %p")
-    return f"⏰ SMS scheduled on your phone for {when} to {raw_recipient}. At that time, the native SMS composer will open with the message ready to send."
+    return f"⏰ SMS scheduled on your phone for {when} to {raw_recipient}. The laptop does not need to stay connected; the phone will open the SMS composer at that time."
 
 def send_sms(recipient: str, message: str) -> str:
     """Send a real SMS in the background and wait for the Android telephony result."""
