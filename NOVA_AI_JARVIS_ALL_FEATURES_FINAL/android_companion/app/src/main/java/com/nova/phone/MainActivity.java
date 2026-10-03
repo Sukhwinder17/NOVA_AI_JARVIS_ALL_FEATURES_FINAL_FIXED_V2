@@ -1,6 +1,8 @@
 package com.nova.phone;
 
 import android.app.Activity;
+import android.app.AlarmManager;
+import android.net.Uri;
 import android.content.Intent;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -24,6 +26,22 @@ public class MainActivity extends Activity {
                 startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")));
         updateStatus();
         requestSmsPermissionIfNeeded();
+        requestExactAlarmAccessIfNeeded();
+    }
+
+    private void requestExactAlarmAccessIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT < 31) return;
+        AlarmManager alarms = (AlarmManager) getSystemService(ALARM_SERVICE);
+        if (alarms != null && !alarms.canScheduleExactAlarms()) {
+            try {
+                Intent intent = new Intent(
+                        Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                        Uri.parse("package:" + getPackageName())
+                );
+                startActivity(intent);
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     private void requestSmsPermissionIfNeeded() {
@@ -55,9 +73,15 @@ public class MainActivity extends Activity {
         String smsText = smsGranted
                 ? "✅ Automatic SMS sending is enabled."
                 : "⚠️ Automatic SMS sending needs SMS permission.";
+        AlarmManager alarms = (AlarmManager) getSystemService(ALARM_SERVICE);
+        boolean exactAlarmGranted = android.os.Build.VERSION.SDK_INT < 31
+                || (alarms != null && alarms.canScheduleExactAlarms());
+        String alarmText = exactAlarmGranted
+                ? "✅ Scheduled SMS timing is enabled."
+                : "⚠️ Allow Alarms & reminders for scheduled SMS.";
         String actionText = enabled
                 ? "Messages can now be forwarded to NOVA."
                 : "Tap the button and enable NOVA Notification Listener.";
-        status.setText(notificationText + "\n" + smsText + "\n" + actionText);
+        status.setText(notificationText + "\n" + smsText + "\n" + alarmText + "\n" + actionText);
     }
 }
