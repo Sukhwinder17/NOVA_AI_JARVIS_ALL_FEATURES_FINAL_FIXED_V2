@@ -53,7 +53,8 @@ TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID', '').strip()
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN', '').strip()
 TWILIO_MESSAGING_SERVICE_SID = os.getenv('TWILIO_MESSAGING_SERVICE_SID', '').strip()
 
-
 SMSGATE_BASE_URL = os.getenv('SMSGATE_BASE_URL', 'https://api.sms-gate.app/3rdparty/v1').strip()
+SMSGATE_LOCAL_URL = os.getenv('SMSGATE_LOCAL_URL', '').strip().rstrip('/')
+SMSGATE_MODE = os.getenv('SMSGATE_MODE', 'cloud').strip().lower()
 SMSGATE_LOGIN = os.getenv('SMSGATE_LOGIN', '').strip()
 SMSGATE_PASSWORD = os.getenv('SMSGATE_PASSWORD', '').strip()
