@@ -173,7 +173,7 @@ def notify(title: str, message: str) -> str:
     return "🔔 Notification sent to your phone."
 
 def send_sms(recipient: str, message: str) -> str:
-    """Open the phone's native SMS composer with the recipient and message filled in."""
+    """Send a real SMS in the background through the Android companion; no UI is opened."""
     serial = _serial()
     if not serial:
         return "No Android phone connected."
@@ -185,8 +185,6 @@ def send_sms(recipient: str, message: str) -> str:
     if not message:
         return "Please specify the SMS message."
 
-    # Keep digits and a single leading + so common forms such as
-    # +91 98765-43210 remain valid for the native smsto: intent.
     cleaned = re.sub(r"[^0-9+]", "", raw_recipient)
     if cleaned.startswith("++") or ("+" in cleaned[1:]):
         return "Please provide a valid SMS phone number."
@@ -194,16 +192,28 @@ def send_sms(recipient: str, message: str) -> str:
     if len(digits) < 5:
         return "Please provide a valid SMS phone number."
 
-    uri = f"smsto:{cleaned}"
-    _run(
-        "-s", serial,
-        "shell", "am", "start",
-        "-a", "android.intent.action.SENDTO",
-        "-d", uri,
-        "--es", "sms_body", message,
-        timeout=15,
-    )
-    return f"💬 Opened your phone's SMS composer for {raw_recipient}. The message is filled in; tap Send on the phone."
+    try:
+        out = _run(
+            "-s", serial, "shell", "am", "broadcast",
+            "-n", "com.nova.phone/.NovaSmsReceiver",
+            "-a", "com.nova.phone.SEND_SMS",
+            "--es", "recipient", cleaned,
+            "--es", "message", message,
+            timeout=20,
+        )
+    except Exception as exc:
+        return f"SMS send failed: {exc}"
+
+    lower = (out or "").lower()
+    if "result=0" in lower:
+        return f"📨 SMS sent automatically to {raw_recipient}."
+    if "result=3" in lower:
+        return "SMS permission is not granted to NOVA Phone Companion. Open the companion once and allow SMS permission."
+    if "result=4" in lower:
+        return "This phone does not support SMS sending through Android's SMS API."
+    if "result=" in lower:
+        return f"SMS send failed on the phone: {out}"
+    return f"SMS request sent to the phone for {raw_recipient}. No SMS screen was opened."
 
 def open_url(url: str) -> str:
     serial = _serial()
