@@ -217,7 +217,10 @@ def send_sms(recipient: str, message: str) -> str:
         return f"SMS send failed on the phone: {out}"
     if "result=2" in lower:
         return f"SMS request was rejected: {out}"
-    if "result=0" not in lower:
+    # Android's Activity.RESULT_OK is -1. Older companion code used 0.
+    # Accept either value because both mean the BroadcastReceiver accepted
+    # the SMS send request. The real telephony result is checked below.
+    if "result=-1" not in lower and "result=0" not in lower:
         return f"SMS request did not start correctly: {out or 'unknown ADB result'}"
 
     # result=0 only means the Android receiver accepted the request. Wait for
