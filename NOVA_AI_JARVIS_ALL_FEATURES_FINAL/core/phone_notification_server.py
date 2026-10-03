@@ -8,14 +8,17 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
 STORE = BASE / "data" / "phone" / "notifications.jsonl"
+SMS_STORE = BASE / "data" / "phone" / "sms_status.jsonl"
 HOST = "127.0.0.1"
 PORT = 8765
+_LOCK = threading.Lock()
 
 
-def _save(item: dict) -> None:
-    STORE.parent.mkdir(parents=True, exist_ok=True)
-    with STORE.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(item, ensure_ascii=False) + "\n")
+def _save(item: dict, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _LOCK:
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
 
 def read_notifications(limit: int = 20) -> str:
@@ -40,6 +43,20 @@ def read_notifications(limit: int = 20) -> str:
     return "\n".join(out)
 
 
+def read_sms_status(request_id: str) -> list[dict]:
+    if not request_id or not SMS_STORE.exists():
+        return []
+    items = []
+    for line in SMS_STORE.read_text(encoding="utf-8", errors="ignore").splitlines():
+        try:
+            item = json.loads(line)
+        except Exception:
+            continue
+        if str(item.get("request_id", "")) == request_id:
+            items.append(item)
+    return items
+
+
 class _Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         return
@@ -57,7 +74,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
-        if self.path != "/notification":
+        if self.path not in ("/notification", "/sms_status"):
             self.send_response(404)
             self.end_headers()
             return
@@ -66,7 +83,7 @@ class _Handler(BaseHTTPRequestHandler):
             raw = self.rfile.read(length)
             payload = json.loads(raw.decode("utf-8"))
             payload["time"] = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
-            _save(payload)
+            _save(payload, STORE if self.path == "/notification" else SMS_STORE)
             self.send_response(200)
             body = b'{"ok":true}'
             self.send_header("Content-Type", "application/json")
