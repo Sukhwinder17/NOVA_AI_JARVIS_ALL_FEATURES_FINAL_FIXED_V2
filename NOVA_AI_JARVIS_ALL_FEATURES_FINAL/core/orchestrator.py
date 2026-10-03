@@ -123,6 +123,9 @@ class NovaOrchestrator:
         if re.search(phone, low) and re.search(r"\bscreenshot\b", low):
             return self._run("phone_manager", {"action": "screenshot"})
 
+        if re.search(phone, low) and re.search(r"\b(?:notification|notifications|messages|sms|texts?)\b", low) and re.search(r"\b(?:read|show|check|see|latest|recent|new)\b", low):
+            return self._run("phone_notifications", {"limit": 20})
+
         if re.search(phone, low) and re.search(r"\b(?:clipboard|clip board)\b", low):
             if re.search(r"\b(?:read|show|get|what(?:'s| is)?)\b", low):
                 return self._run("phone_manager", {"action": "clipboard_get"})
