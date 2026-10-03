@@ -52,3 +52,8 @@ def sync_legacy_config() -> None:
 TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID', '').strip()
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN', '').strip()
 TWILIO_MESSAGING_SERVICE_SID = os.getenv('TWILIO_MESSAGING_SERVICE_SID', '').strip()
+
+
+SMSGATE_BASE_URL = os.getenv('SMSGATE_BASE_URL', 'https://api.sms-gate.app/3rdparty/v1').strip()
+SMSGATE_LOGIN = os.getenv('SMSGATE_LOGIN', '').strip()
+SMSGATE_PASSWORD = os.getenv('SMSGATE_PASSWORD', '').strip()
