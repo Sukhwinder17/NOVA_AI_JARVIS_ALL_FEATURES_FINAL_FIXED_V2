@@ -73,6 +73,11 @@ def _serial() -> str:
             _run("connect", saved)
             ds = devices()
             if ds:
+                try:
+                    _run("-s", ds[0], "reverse", "tcp:8765", "tcp:8765")
+                except Exception:
+                    pass
+            if ds:
                 return ds[0]
         except Exception:
             pass
@@ -83,10 +88,18 @@ def connect(address: str = "") -> str:
     if address:
         out = _run("connect", address)
         os.environ["NOVA_PHONE_ADDRESS"] = address
+        try:
+            _run("reverse", "tcp:8765", "tcp:8765")
+        except Exception:
+            pass
         return out or f"Connected to {address}."
     serial = _serial()
     if not serial:
         return "No Android phone detected. Connect it by USB, or run 'adb pair IP:PORT' and then 'adb connect IP:PORT'."
+    try:
+        _run("-s", serial, "reverse", "tcp:8765", "tcp:8765")
+    except Exception:
+        pass
     return f"Phone connected: {serial}"
 
 def status() -> str:
