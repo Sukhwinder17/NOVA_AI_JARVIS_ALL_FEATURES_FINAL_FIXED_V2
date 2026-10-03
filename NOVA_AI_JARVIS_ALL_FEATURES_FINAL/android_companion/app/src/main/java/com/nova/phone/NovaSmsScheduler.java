@@ -63,6 +63,11 @@ public final class NovaSmsScheduler {
         }
     }
 
+    public static void rescheduleExisting(Context context, String requestId, long triggerAtMillis) {
+        if (!canScheduleExact(context)) return;
+        armAtWallClock(context, requestId, triggerAtMillis);
+    }
+
     public static void remove(Context context, String requestId) {
         if (requestId == null || requestId.isEmpty()) return;
 
