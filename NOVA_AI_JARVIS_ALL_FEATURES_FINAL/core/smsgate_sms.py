@@ -20,6 +20,11 @@ LOCAL_BASE_URL = os.getenv("SMSGATE_LOCAL_URL", "").strip().rstrip("/")
 LOGIN = os.getenv("SMSGATE_LOGIN", "").strip()
 PASSWORD = os.getenv("SMSGATE_PASSWORD", "").strip()
 
+# Cloud Server credentials are separate from Local Server credentials.
+# Fall back to the shared credentials for backward compatibility.
+CLOUD_LOGIN = os.getenv("SMSGATE_CLOUD_LOGIN", "").strip() or LOGIN
+CLOUD_PASSWORD = os.getenv("SMSGATE_CLOUD_PASSWORD", "").strip() or PASSWORD
+
 
 def configured() -> bool:
     if not LOGIN or not PASSWORD:
@@ -70,7 +75,7 @@ def _request(method: str, path: str, **kwargs):
     response = requests.request(
         method,
         url,
-        auth=(LOGIN, PASSWORD),
+        auth=(CLOUD_LOGIN, CLOUD_PASSWORD),
         timeout=25,
         **kwargs,
     )
@@ -179,10 +184,11 @@ def schedule_sms(recipient: str, message: str, send_at: datetime) -> str:
 
 
 def _request_cloud(method: str, path: str, **kwargs):
-    if not LOGIN or not PASSWORD or not CLOUD_BASE_URL:
+    if not CLOUD_LOGIN or not CLOUD_PASSWORD or not CLOUD_BASE_URL:
         raise RuntimeError(
-            "SMSGate Cloud is not configured. Set SMSGATE_BASE_URL, "
-            "SMSGATE_LOGIN and SMSGATE_PASSWORD in .env."
+            "SMSGate Cloud is not configured. Turn on Cloud Server in SMSGate, "
+            "get the generated Cloud username/password, and set "
+            "SMSGATE_CLOUD_LOGIN and SMSGATE_CLOUD_PASSWORD in .env."
         )
 
     response = requests.request(
