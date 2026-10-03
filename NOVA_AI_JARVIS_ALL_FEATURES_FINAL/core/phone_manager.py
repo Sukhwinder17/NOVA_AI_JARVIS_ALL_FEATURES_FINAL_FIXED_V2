@@ -4,6 +4,8 @@ import os
 import re
 import shutil
 import subprocess
+import time
+import uuid
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
@@ -173,7 +175,7 @@ def notify(title: str, message: str) -> str:
     return "🔔 Notification sent to your phone."
 
 def send_sms(recipient: str, message: str) -> str:
-    """Send a real SMS in the background through the Android companion; no UI is opened."""
+    """Send a real SMS in the background and wait for the Android telephony result."""
     serial = _serial()
     if not serial:
         return "No Android phone connected."
@@ -192,11 +194,13 @@ def send_sms(recipient: str, message: str) -> str:
     if len(digits) < 5:
         return "Please provide a valid SMS phone number."
 
+    request_id = uuid.uuid4().hex
     try:
         out = _run(
             "-s", serial, "shell", "am", "broadcast",
             "-n", "com.nova.phone/.NovaSmsReceiver",
             "-a", "com.nova.phone.SEND_SMS",
+            "--es", "request_id", request_id,
             "--es", "recipient", cleaned,
             "--es", "message", message,
             timeout=20,
@@ -205,15 +209,46 @@ def send_sms(recipient: str, message: str) -> str:
         return f"SMS send failed: {exc}"
 
     lower = (out or "").lower()
-    if "result=0" in lower:
-        return f"📨 SMS sent automatically to {raw_recipient}."
     if "result=3" in lower:
         return "SMS permission is not granted to NOVA Phone Companion. Open the companion once and allow SMS permission."
     if "result=4" in lower:
         return "This phone does not support SMS sending through Android's SMS API."
-    if "result=" in lower:
+    if "result=5" in lower:
         return f"SMS send failed on the phone: {out}"
-    return f"SMS request sent to the phone for {raw_recipient}. No SMS screen was opened."
+    if "result=2" in lower:
+        return f"SMS request was rejected: {out}"
+    if "result=0" not in lower:
+        return f"SMS request did not start correctly: {out or 'unknown ADB result'}"
+
+    # result=0 only means the Android receiver accepted the request. Wait for
+    # the asynchronous SmsManager PendingIntent result before claiming success.
+    try:
+        from .phone_notification_server import read_sms_status
+        deadline = time.time() + 20
+        while time.time() < deadline:
+            statuses = read_sms_status(request_id)
+            if statuses:
+                failed = next((s for s in statuses if s.get("status") == "failed"), None)
+                if failed:
+                    reason = failed.get("result") or failed.get("result_code") or "unknown failure"
+                    return f"❌ SMS was not sent to {raw_recipient}: {reason}."
+
+                total = max(int(s.get("total", 1) or 1) for s in statuses)
+                sent_parts = {
+                    int(s.get("part", 0) or 0)
+                    for s in statuses
+                    if s.get("status") in ("sent", "delivered")
+                }
+                if len(sent_parts) >= total:
+                    return f"📨 SMS sent successfully to {raw_recipient}."
+            time.sleep(0.25)
+    except Exception:
+        pass
+
+    return (
+        f"⚠️ Android accepted the SMS request for {raw_recipient}, "
+        "but no telephony send confirmation arrived. Check the phone's signal/SIM/default SMS subscription."
+    )
 
 def open_url(url: str) -> str:
     serial = _serial()
