@@ -48,3 +48,7 @@ def sync_legacy_config() -> None:
         data['gemini_api_key'] = GEMINI_API_KEY
     data['os_system'] = 'windows' if os.name == 'nt' else ('mac' if os.uname().sysname == 'Darwin' else 'linux')
     path.write_text(json.dumps(data, indent=2), encoding='utf-8')
+
+TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID', '').strip()
+TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN', '').strip()
+TWILIO_MESSAGING_SERVICE_SID = os.getenv('TWILIO_MESSAGING_SERVICE_SID', '').strip()
