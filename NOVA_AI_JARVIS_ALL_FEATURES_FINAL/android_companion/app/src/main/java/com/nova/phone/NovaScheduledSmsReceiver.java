@@ -116,7 +116,8 @@ public class NovaScheduledSmsReceiver extends BroadcastReceiver {
                     requestId.trim(),
                     recipient.trim(),
                     message,
-                    triggerAt
+                    triggerAt,
+                    delayMs
             );
             setResultCode(Activity.RESULT_OK);
         } catch (SecurityException e) {
