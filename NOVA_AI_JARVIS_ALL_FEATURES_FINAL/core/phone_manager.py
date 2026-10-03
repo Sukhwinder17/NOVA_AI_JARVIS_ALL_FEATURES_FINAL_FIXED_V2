@@ -235,6 +235,25 @@ def schedule_sms(recipient: str, message: str, trigger_at_ms: int) -> str:
     from datetime import datetime
     when = datetime.fromtimestamp(trigger / 1000).astimezone().strftime("%Y-%m-%d %I:%M %p")
     return f"⏰ SMS scheduled on your phone for {when} to {raw_recipient}. The laptop does not need to stay connected; the phone will open the SMS composer at that time."
+def cancel_scheduled_sms() -> str:
+    """Cancel all phone-resident scheduled SMS."""
+    serial = _serial()
+    if not serial:
+        return "No Android phone connected."
+    try:
+        out = _run(
+            "-s", serial, "shell", "am", "broadcast",
+            "-n", "com.nova.phone/.NovaScheduledSmsReceiver",
+            "-a", "com.nova.phone.CANCEL_ALL_SMS",
+            timeout=15,
+        )
+        lower=(out or "").lower()
+        if "result=-1" in lower or "result=0" in lower:
+            return "🗑️ All scheduled SMS cancelled on the phone."
+        return f"Could not cancel scheduled SMS: {out}"
+    except Exception as exc:
+        return f"Could not cancel scheduled SMS: {exc}"
+
 
 def send_sms(recipient: str, message: str) -> str:
     """Send a real SMS in the background and wait for the Android telephony result."""
@@ -426,6 +445,7 @@ def phone_command(action: str, **kwargs) -> str:
         str(kwargs.get("message", "")),
         int(kwargs.get("trigger_at_ms", 0)),
     )
+    if action in ("cancel_scheduled_sms", "cancel_scheduled_text"): return cancel_scheduled_sms()
     if action in ("send_sms", "sms", "text_message"): return send_sms(
         str(kwargs.get("recipient", kwargs.get("number", ""))),
         str(kwargs.get("message", "")),
