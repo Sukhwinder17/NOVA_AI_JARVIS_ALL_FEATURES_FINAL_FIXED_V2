@@ -128,25 +128,42 @@ public final class NovaSmsScheduler {
         );
     }
 
+    private static PendingIntent alarmShowIntent(Context context) {
+        Intent launch = new Intent(context, MainActivity.class);
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        return PendingIntent.getActivity(
+                context,
+                9901,
+                launch,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+    }
+
     private static void armAfterDelay(Context context, String requestId, long delayMs) {
         AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarms == null) throw new IllegalStateException("AlarmManager unavailable.");
 
-        alarms.setExactAndAllowWhileIdle(
-                AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                SystemClock.elapsedRealtime() + delayMs,
-                pendingIntent(context, requestId)
+        long triggerElapsed = SystemClock.elapsedRealtime() + Math.max(1000L, delayMs);
+        PendingIntent operation = pendingIntent(context, requestId);
+
+        // AlarmClock alarms are intended for user-requested exact events and
+        // are the strongest exact-alarm option for OEM devices.
+        AlarmManager.AlarmClockInfo info = new AlarmManager.AlarmClockInfo(
+                System.currentTimeMillis() + Math.max(1000L, delayMs),
+                alarmShowIntent(context)
         );
+
+        alarms.setAlarmClock(info, operation);
     }
 
     private static void armAtWallClock(Context context, String requestId, long triggerAtMillis) {
         AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarms == null) throw new IllegalStateException("AlarmManager unavailable.");
 
-        alarms.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                triggerAtMillis,
-                pendingIntent(context, requestId)
+        PendingIntent operation = pendingIntent(context, requestId);
+        alarms.setAlarmClock(
+                new AlarmManager.AlarmClockInfo(triggerAtMillis, alarmShowIntent(context)),
+                operation
         );
     }
 
