@@ -17,6 +17,7 @@ from PyQt6.QtCore import QTimer
 from core import config
 config.sync_legacy_config()
 from core.orchestrator import NovaOrchestrator
+from core.phone_notification_server import PhoneNotificationServer
 from ui import NovaWindow
 
 APP_DIR=Path(__file__).resolve().parent
@@ -25,6 +26,8 @@ def main():
     app=QApplication(sys.argv)
     app.setApplicationName('NOVA AI')
     orchestrator=NovaOrchestrator()
+    phone_notification_server = PhoneNotificationServer()
+    phone_notification_server.start()
     win=NovaWindow(orchestrator)
     # Global Ctrl+Space push-to-talk on Windows where available.
     try:
