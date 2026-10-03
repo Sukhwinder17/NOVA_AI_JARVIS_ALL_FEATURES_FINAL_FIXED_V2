@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -18,6 +19,9 @@ APP_PACKAGES = {
     "gmail": "com.google.android.gm",
     "maps": "com.google.android.apps.maps",
     "google maps": "com.google.android.apps.maps",
+    "messages": "com.google.android.apps.messaging",
+    "messaging": "com.google.android.apps.messaging",
+    "sms": "com.google.android.apps.messaging",
     "settings": "com.android.settings",
     "play store": "com.android.vending",
     "google play": "com.android.vending",
@@ -56,46 +60,79 @@ def devices() -> list[str]:
     rows = []
     for line in out.splitlines()[1:]:
         line = line.strip()
-        if line and not line.startswith("*") and "\tdevice" in line:
-            serial = line.split("\t", 1)[0]
+        if line and not line.startswith("*") and "	device" in line:
+            serial = line.split("	", 1)[0]
             if "._adb-tls-connect._tcp" not in serial:
                 rows.append(serial)
     rows.sort(key=lambda s: (0 if ":" in s and s.rsplit(":", 1)[-1].isdigit() else 1, s))
     return rows
 
+def _mdns_addresses() -> list[str]:
+    """Discover wireless-debugging endpoints advertised by Android's mDNS service."""
+    try:
+        out = _run("mdns", "services", timeout=5)
+    except Exception:
+        return []
+    found = []
+    for line in out.splitlines():
+        if "_adb-tls-connect._tcp" not in line:
+            continue
+        match = re.search(r"(\d{1,3}(?:\.\d{1,3}){3}:\d+)", line)
+        if match and match.group(1) not in found:
+            found.append(match.group(1))
+    return found
+
+def _restore_connection(address: str) -> str:
+    """Reconnect to a known ADB endpoint and recreate NOVA's reverse tunnel."""
+    _run("connect", address, timeout=10)
+    ds = devices()
+    if not ds:
+        return ""
+    serial = next((d for d in ds if d == address), ds[0])
+    os.environ["NOVA_PHONE_ADDRESS"] = serial
+    try:
+        _run("-s", serial, "reverse", "tcp:8765", "tcp:8765")
+    except Exception:
+        pass
+    return serial
+
 def _serial() -> str:
     ds = devices()
     if ds:
         return ds[0]
+
     saved = os.getenv("NOVA_PHONE_ADDRESS", "").strip()
     if saved:
         try:
-            _run("connect", saved)
-            ds = devices()
-            if ds:
-                try:
-                    _run("-s", ds[0], "reverse", "tcp:8765", "tcp:8765")
-                except Exception:
-                    pass
-            if ds:
-                return ds[0]
+            serial = _restore_connection(saved)
+            if serial:
+                return serial
         except Exception:
             pass
+
+    # Wireless debugging can remain discoverable through mDNS even after the
+    # active ADB transport drops. Recover automatically from the advertised endpoint.
+    for address in _mdns_addresses():
+        try:
+            serial = _restore_connection(address)
+            if serial:
+                return serial
+        except Exception:
+            continue
     return ""
 
 def connect(address: str = "") -> str:
     address = address.strip()
     if address:
-        out = _run("connect", address)
-        os.environ["NOVA_PHONE_ADDRESS"] = address
-        try:
-            _run("reverse", "tcp:8765", "tcp:8765")
-        except Exception:
-            pass
-        return out or f"Connected to {address}."
+        out = _run("connect", address, timeout=10)
+        serial = _restore_connection(address)
+        if not serial:
+            return f"ADB did not establish a usable connection to {address}. {out}".strip()
+        return f"Phone connected: {serial}"
+
     serial = _serial()
     if not serial:
-        return "No Android phone detected. Connect it by USB, or run 'adb pair IP:PORT' and then 'adb connect IP:PORT'."
+        return "No Android phone detected. Wireless debugging may be off or the phone may be unavailable."
     try:
         _run("-s", serial, "reverse", "tcp:8765", "tcp:8765")
     except Exception:
@@ -134,6 +171,39 @@ def notify(title: str, message: str) -> str:
         return "No Android phone connected."
     _run("-s", serial, "shell", "cmd", "notification", "post", "-S", "bigtext", "nova_ai", title, message)
     return "🔔 Notification sent to your phone."
+
+def send_sms(recipient: str, message: str) -> str:
+    """Open the phone's native SMS composer with the recipient and message filled in."""
+    serial = _serial()
+    if not serial:
+        return "No Android phone connected."
+
+    raw_recipient = str(recipient or "").strip()
+    message = str(message or "").strip()
+    if not raw_recipient:
+        return "Please specify the SMS recipient phone number."
+    if not message:
+        return "Please specify the SMS message."
+
+    # Keep digits and a single leading + so common forms such as
+    # +91 98765-43210 remain valid for the native smsto: intent.
+    cleaned = re.sub(r"[^0-9+]", "", raw_recipient)
+    if cleaned.startswith("++") or ("+" in cleaned[1:]):
+        return "Please provide a valid SMS phone number."
+    digits = re.sub(r"\D", "", cleaned)
+    if len(digits) < 5:
+        return "Please provide a valid SMS phone number."
+
+    uri = f"smsto:{cleaned}"
+    _run(
+        "-s", serial,
+        "shell", "am", "start",
+        "-a", "android.intent.action.SENDTO",
+        "-d", uri,
+        "--es", "sms_body", message,
+        timeout=15,
+    )
+    return f"💬 Opened your phone's SMS composer for {raw_recipient}. The message is filled in; tap Send on the phone."
 
 def open_url(url: str) -> str:
     serial = _serial()
@@ -241,6 +311,10 @@ def phone_command(action: str, **kwargs) -> str:
     if action in ("status", "battery"): return status()
     if action == "info": return info()
     if action == "notify": return notify(str(kwargs.get("title", "NOVA AI")), str(kwargs.get("message", "")))
+    if action in ("send_sms", "sms", "text_message"): return send_sms(
+        str(kwargs.get("recipient", kwargs.get("number", ""))),
+        str(kwargs.get("message", "")),
+    )
     if action == "open_url": return open_url(str(kwargs.get("url", "")))
     if action in ("launch_app", "open_app"): return launch_app(str(kwargs.get("app", "")))
     if action == "screenshot": return screenshot()
@@ -250,4 +324,4 @@ def phone_command(action: str, **kwargs) -> str:
     if action == "media": return media(str(kwargs.get("media_action", "")))
     if action == "disconnect": return disconnect()
     if action == "devices": return connect("")
-    return "Phone actions: connect, status, info, battery, notify, open_url, launch_app, screenshot, clipboard_get, clipboard_set, volume, media, disconnect."
+    return "Phone actions: connect, status, info, battery, notify, send_sms, open_url, launch_app, screenshot, clipboard_get, clipboard_set, volume, media, disconnect."
