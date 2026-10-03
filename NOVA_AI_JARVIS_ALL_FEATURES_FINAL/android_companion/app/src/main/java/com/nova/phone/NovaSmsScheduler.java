@@ -39,22 +39,28 @@ public final class NovaSmsScheduler {
                 if (old != null) updated.put(old);
             }
 
+            // When a delay is supplied, the PHONE is authoritative. Store the
+            // exact phone wall-clock target derived from that delay, then arm
+            // using elapsed realtime. This prevents laptop/phone clock skew from
+            // making a schedule fire immediately or at the wrong minute.
+            long phoneTriggerAt = triggerAtMillis;
+            if (delayMs > 0L) {
+                phoneTriggerAt = System.currentTimeMillis() + delayMs;
+            }
+
             JSONObject item = new JSONObject();
             item.put("request_id", requestId);
             item.put("recipient", recipient);
             item.put("message", message);
-            item.put("trigger_at", triggerAtMillis);
+            item.put("trigger_at", phoneTriggerAt);
             updated.put(item);
 
             writeItems(context, updated);
 
-            // Use elapsed realtime for the initial schedule. This is immune to
-            // laptop/phone wall-clock differences, so an SMS cannot fire early
-            // because the two devices have different clocks.
             if (delayMs > 0L) {
                 armAfterDelay(context, requestId, delayMs);
             } else {
-                armAtWallClock(context, requestId, triggerAtMillis);
+                armAtWallClock(context, requestId, phoneTriggerAt);
             }
         } catch (SecurityException e) {
             throw e;
@@ -66,6 +72,20 @@ public final class NovaSmsScheduler {
     public static void rescheduleExisting(Context context, String requestId, long triggerAtMillis) {
         if (!canScheduleExact(context)) return;
         armAtWallClock(context, requestId, triggerAtMillis);
+    }
+
+    public static void cancelAll(Context context) {
+        try {
+            JSONArray items = readItems(context);
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject item = items.optJSONObject(i);
+                if (item != null) {
+                    cancelAlarm(context, item.optString("request_id", ""));
+                }
+            }
+            writeItems(context, new JSONArray());
+        } catch (Exception ignored) {
+        }
     }
 
     public static void remove(Context context, String requestId) {
