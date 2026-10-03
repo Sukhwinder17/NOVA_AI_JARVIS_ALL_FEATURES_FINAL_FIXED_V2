@@ -83,6 +83,7 @@ class NovaOrchestrator:
             pending = self._pending_sms_schedule
             self._pending_sms_schedule = None
             return self._run("smsgate_sms", {
+                "action": "schedule",
                 "recipient": pending["recipient"],
                 "message": t,
                 "send_at": datetime.fromtimestamp(
@@ -198,11 +199,11 @@ class NovaOrchestrator:
             if m:
                 try:
                     target = _scheduled_target(m)
-                    return self._run("phone_manager", {
-                        "action": "schedule_sms",
+                    return self._run("smsgate_sms", {
+                        "action": "schedule",
                         "recipient": m.group("recipient").strip(),
                         "message": m.group("message").strip(),
-                        "trigger_at_ms": int(target.timestamp() * 1000),
+                        "send_at": target.isoformat(),
                     })
                 except ValueError:
                     return "Please give me a valid time, such as 7:30 PM."
