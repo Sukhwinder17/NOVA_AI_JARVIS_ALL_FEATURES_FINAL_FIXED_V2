@@ -1,20 +1,31 @@
 package com.nova.phone;
 
 import android.app.Activity;
+import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.telephony.SmsManager;
+
+import java.util.ArrayList;
+
 import android.net.Uri;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+/**
+ * Stores schedules on the phone and sends the real SMS when AlarmManager fires.
+ * No laptop/ADB connection is needed at send time and no Messages UI is opened.
+ */
 public class NovaScheduledSmsReceiver extends BroadcastReceiver {
     public static final String ACTION_SCHEDULE_SMS = "com.nova.phone.SCHEDULE_SMS";
     public static final String ACTION_SCHEDULED_SMS = "com.nova.phone.SCHEDULED_SMS";
     public static final String EXTRA_REQUEST_ID = "request_id";
     public static final String EXTRA_RECIPIENT = "recipient";
     public static final String EXTRA_MESSAGE = "message";
+
+    private static final String ACTION_SENT = "com.nova.phone.SMS_SENT";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -33,21 +44,50 @@ public class NovaScheduledSmsReceiver extends BroadcastReceiver {
         String[] data = lookup(context, requestId);
         if (data == null) return;
 
-        // One-time schedule.
+        // Remove the one-shot schedule before sending so it cannot fire twice.
         NovaSmsScheduler.remove(context, requestId);
 
-        Intent sms = new Intent(Intent.ACTION_SENDTO);
-        sms.setData(Uri.parse("smsto:" + data[0]));
-        sms.putExtra("sms_body", data[1]);
-        sms.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (android.os.Build.VERSION.SDK_INT >= 23
+                && context.checkSelfPermission(android.Manifest.permission.SEND_SMS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
 
         try {
-            context.startActivity(sms);
+            SmsManager manager = SmsManager.getDefault();
+            ArrayList<String> parts = manager.divideMessage(data[1]);
+
+            if (parts.size() <= 1) {
+                PendingIntent sent = sentIntent(context, requestId, 0, 1);
+                manager.sendTextMessage(data[0], null, data[1], sent, null);
+            } else {
+                ArrayList<PendingIntent> sentIntents = new ArrayList<>();
+                for (int i = 0; i < parts.size(); i++) {
+                    sentIntents.add(sentIntent(context, requestId, i, parts.size()));
+                }
+                manager.sendMultipartTextMessage(data[0], null, parts, sentIntents, null);
+            }
         } catch (Exception ignored) {
-            // The schedule is consumed even if Android blocks a background
-            // activity launch. The user can use the companion notification
-            // fallback in a later version.
+            // The PendingIntent callback reports carrier-level send results
+            // when Android can deliver it.
         }
+    }
+
+    private PendingIntent sentIntent(Context context, String requestId, int part, int total) {
+        Intent callback = new Intent(context, NovaSmsStatusReceiver.class);
+        callback.setAction(ACTION_SENT);
+        callback.setData(Uri.parse("nova-scheduled-result:" + requestId + ":" + part));
+        callback.putExtra("request_id", requestId);
+        callback.putExtra("part", part);
+        callback.putExtra("total", total);
+
+        int code = (requestId + ":scheduled:" + part).hashCode() & 0x7fffffff;
+        return PendingIntent.getBroadcast(
+                context,
+                code,
+                callback,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
     }
 
     private void handleScheduleCommand(Context context, Intent intent) {
@@ -57,11 +97,6 @@ public class NovaScheduledSmsReceiver extends BroadcastReceiver {
         long delayMs = intent.getLongExtra("delay_ms", -1L);
         long triggerAt = intent.getLongExtra("trigger_at", 0L);
 
-        // Prefer relative delay to avoid laptop/phone clock skew.
-        // If delay_ms is missing (for example an older NOVA desktop build),
-        // fall back to the absolute timestamp. If that timestamp is already
-        // in the past, schedule it a few seconds from now instead of rejecting
-        // a valid command.
         if (delayMs > 0L) {
             triggerAt = System.currentTimeMillis() + delayMs;
         } else if (triggerAt <= System.currentTimeMillis()) {
@@ -97,7 +132,6 @@ public class NovaScheduledSmsReceiver extends BroadcastReceiver {
 
         try {
             JSONArray items = new JSONArray(raw);
-
             for (int i = 0; i < items.length(); i++) {
                 JSONObject item = items.optJSONObject(i);
                 if (item == null) continue;
