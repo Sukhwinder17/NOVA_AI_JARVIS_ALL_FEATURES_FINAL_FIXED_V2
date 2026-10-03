@@ -75,7 +75,7 @@ def _request(method: str, path: str, **kwargs):
     response = requests.request(
         method,
         url,
-        auth=(CLOUD_LOGIN, CLOUD_PASSWORD),
+        auth=(LOGIN, PASSWORD),
         timeout=25,
         **kwargs,
     )
@@ -194,7 +194,7 @@ def _request_cloud(method: str, path: str, **kwargs):
     response = requests.request(
         method,
         f"{CLOUD_BASE_URL}/{path.lstrip('/')}",
-        auth=(LOGIN, PASSWORD),
+        auth=(CLOUD_LOGIN, CLOUD_PASSWORD),
         timeout=25,
         **kwargs,
     )
