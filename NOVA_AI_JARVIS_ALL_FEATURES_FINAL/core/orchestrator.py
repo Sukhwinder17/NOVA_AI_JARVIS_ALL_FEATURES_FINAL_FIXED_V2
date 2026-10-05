@@ -73,23 +73,49 @@ class NovaOrchestrator:
         t = text.strip()
         low = t.lower()
 
-        # Complete a two-step scheduled SMS request. NOVA first asks for the
-        # message body, then accepts any natural wording as the message and stores
-        # it on the phone for the requested time.
+        # Keep an SMS schedule draft alive until the user explicitly supplies
+        # an SMS body. Unrelated conversation must NOT consume the draft.
         if self._pending_sms_schedule:
-            if re.fullmatch(r"(?:cancel|nevermind|never mind|stop)", low):
+            if re.fullmatch(r"(?:cancel|nevermind|never mind|stop)s*", low):
                 self._pending_sms_schedule = None
                 return "Scheduled SMS cancelled."
-            pending = self._pending_sms_schedule
-            self._pending_sms_schedule = None
-            return self._run("smsgate_sms", {
-                "action": "schedule",
-                "recipient": pending["recipient"],
-                "message": t,
-                "send_at": datetime.fromtimestamp(
-                    pending["trigger_at_ms"] / 1000
-                ).astimezone().isoformat(),
-            })
+
+            # Explicit message handoff: "message: hello", "send message: hello",
+            # or "the message is hello".
+            body_match = re.match(
+                r"^(?:send\s+)?(?:the\s+)?message\s*(?:is|:)s*(.+)$",
+                t, re.I | re.S,
+            )
+            if body_match:
+                pending = self._pending_sms_schedule
+                self._pending_sms_schedule = None
+                return self._run("smsgate_sms", {
+                    "action": "schedule",
+                    "recipient": pending["recipient"],
+                    "message": body_match.group(1).strip(" \"'"),
+                    "send_at": datetime.fromtimestamp(
+                        pending["trigger_at_ms"] / 1000
+                    ).astimezone().isoformat(),
+                })
+
+            # A clear SMS command can also provide the pending body.
+            if re.match(r"^(?:send|sms|text)\s+(?:this\s+)?(?:message\s+)?(?:saying|say|that\s+says)\b", low):
+                pending = self._pending_sms_schedule
+                body = re.sub(
+                    r"^(?:send|sms|text)\s+(?:this\s+)?(?:message\s+)?(?:saying|say|that\s+says)\s*",
+                    "",
+                    t, flags=re.I,
+                ).strip(" \"'")
+                if body:
+                    self._pending_sms_schedule = None
+                    return self._run("smsgate_sms", {
+                        "action": "schedule",
+                        "recipient": pending["recipient"],
+                        "message": body,
+                        "send_at": datetime.fromtimestamp(
+                            pending["trigger_at_ms"] / 1000
+                        ).astimezone().isoformat(),
+                    })
 
 
 
@@ -169,7 +195,7 @@ class NovaOrchestrator:
             if match.groupdict().get("day") == "tomorrow":
                 target += timedelta(days=1)
             elif target <= now:
-                target += timedelta(days=1)
+                raise ValueError("past_time")
 
             return target
 
@@ -187,7 +213,9 @@ class NovaOrchestrator:
                         f"Sure. Type your message now. I will schedule the SMS to "
                         f"{m.group('recipient').strip()} for {when}."
                     )
-                except ValueError:
+                except ValueError as exc:
+                    if str(exc) == "past_time":
+                        return "That time has already passed. Please enter a future time, such as 3:10 PM, or say 'tomorrow at 2:10 PM'."
                     return "Please give me a valid time, such as 7:30 PM."
 
         scheduled_sms_patterns = [
@@ -205,7 +233,9 @@ class NovaOrchestrator:
                         "message": m.group("message").strip(),
                         "send_at": target.isoformat(),
                     })
-                except ValueError:
+                except ValueError as exc:
+                    if str(exc) == "past_time":
+                        return "That time has already passed. Please enter a future time, such as 3:10 PM, or say 'tomorrow at 2:10 PM'."
                     return "Please give me a valid time, such as 7:30 PM."
 
         # Native SMS commands. These open the phone's real SMS composer with the
