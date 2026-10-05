@@ -208,6 +208,67 @@ class NovaOrchestrator:
                 raise ValueError("past_time")
             return target
 
+        # High-priority explicit SMS scheduling syntax.
+        # A numeric recipient means PHONE/SMSGate by default.
+        # WhatsApp is only selected when the command explicitly contains "WhatsApp".
+        explicit_sms_date = re.match(
+            r"""^(?:schedule\s+|send\s+)?(?:an?\s+)?(?:sms|text(?:\s+message)?)\s+to\s+"""
+            r"""(?P<recipient>\+?\d{10,13})\s+(?:at\s+|on\s+)?"""
+            r"""(?P<date>\d{1,2}(?:st|nd|rd|th)?\s+"""
+            r"""(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"""
+            r"""jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|"""
+            r"""oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+20\d{2})?)\s+"""
+            r"""(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*"""
+            r"""(?P<ampm>am|pm)\s+(?:saying|say|that\s+says|:|-)\s*"""
+            r"""["']?(?P<message>.+?)["']?$""",
+            t, re.I | re.S,
+        )
+        if explicit_sms_date:
+            try:
+                target = _parse_scheduled_datetime(
+                    f"{explicit_sms_date.group('date')} "
+                    f"{explicit_sms_date.group('hour')}:{explicit_sms_date.group('minute') or '00'} "
+                    f"{explicit_sms_date.group('ampm')}"
+                )
+                return self._run("smsgate_sms", {
+                    "action": "schedule",
+                    "recipient": explicit_sms_date.group("recipient"),
+                    "message": explicit_sms_date.group("message").strip(),
+                    "send_at": target.isoformat(),
+                })
+            except ValueError as exc:
+                if str(exc) == "past_time":
+                    return "That date and time has already passed. Please enter a future date and time."
+                return "Please use a valid date and time, for example: 6 Oct 5 PM."
+
+        explicit_sms_date_no_body = re.match(
+            r"""^(?:schedule\s+|send\s+)?(?:an?\s+)?(?:sms|text(?:\s+message)?)\s+to\s+"""
+            r"""(?P<recipient>\+?\d{10,13})\s+(?:at\s+|on\s+)?"""
+            r"""(?P<date>\d{1,2}(?:st|nd|rd|th)?\s+"""
+            r"""(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"""
+            r"""jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|"""
+            r"""oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+20\d{2})?)\s+"""
+            r"""(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*"""
+            r"""(?P<ampm>am|pm)\s*$""",
+            t, re.I,
+        )
+        if explicit_sms_date_no_body:
+            try:
+                target = _parse_scheduled_datetime(
+                    f"{explicit_sms_date_no_body.group('date')} "
+                    f"{explicit_sms_date_no_body.group('hour')}:{explicit_sms_date_no_body.group('minute') or '00'} "
+                    f"{explicit_sms_date_no_body.group('ampm')}"
+                )
+                self._pending_sms_schedule = {
+                    "recipient": explicit_sms_date_no_body.group("recipient"),
+                    "trigger_at_ms": int(target.timestamp() * 1000),
+                }
+                return f"Sure. Type your message now. I will schedule the SMS to {explicit_sms_date_no_body.group('recipient')} for {target.strftime('%d %b %Y, %I:%M %p')}."
+            except ValueError as exc:
+                if str(exc) == "past_time":
+                    return "That date and time has already passed. Please enter a future date and time."
+                return "Please use a valid date and time, for example: 6 Oct 5 PM."
+
         no_body_patterns = [
             r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)\s+(?:at\s+|on\s+)?(?P<date>\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+20\d{2})?)\s+(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?$""",
             r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)\s+(?:(?P<day>tomorrow)\s+)?at\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?$""",
@@ -281,6 +342,21 @@ class NovaOrchestrator:
                     if str(exc) == "past_time":
                         return "That time has already passed. Please enter a future time, such as 3:10 PM, or say 'tomorrow at 2:10 PM'."
                     return "Please give me a valid time, such as 7:30 PM."
+
+        # Explicit WhatsApp commands. Mentioning "WhatsApp" is required
+        # when sending to a phone number through WhatsApp.
+        whatsapp_number = re.match(
+            r"""^(?:whatsapp\s+)?(?:send\s+)?(?:a\s+)?(?:whatsapp\s+)?(?:message\s+)?"""
+            r"""(?:to\s+)?(?P<recipient>\+?\d{10,13})\s+(?:saying|say|that\s+says|:|-)\s*"""
+            r"""["']?(?P<message>.+?)["']?$""",
+            t, re.I | re.S,
+        )
+        if whatsapp_number and re.search(r"\bwhatsapp\b", low):
+            return self._run("send_message", {
+                "receiver": whatsapp_number.group("recipient"),
+                "message_text": whatsapp_number.group("message").strip(),
+                "platform": "whatsapp",
+            })
 
         # Native SMS commands. These open the phone's real SMS composer with the
         # recipient and message filled in, instead of creating a NOVA notification.
@@ -423,14 +499,17 @@ class NovaOrchestrator:
                 "platform": "whatsapp",
             })
 
-        # "send MESSAGE to NAME"
+        # "send MESSAGE to NAME" is WhatsApp only when the receiver is a name,
+        # never a numeric phone number. Numeric recipients default to SMS above.
         m = re.match(r"^send\s+(.+?)\s+to\s+(.+?)$", t, re.I)
         if m and len(m.group(1)) < 300:
-            return self._run("send_message", {
-                "receiver": m.group(2).strip(),
-                "message_text": m.group(1).strip(),
-                "platform": "whatsapp",
-            })
+            receiver = m.group(2).strip()
+            if not re.fullmatch(r"\+?\d[\d\s().-]{4,}", receiver):
+                return self._run("send_message", {
+                    "receiver": receiver,
+                    "message_text": m.group(1).strip(),
+                    "platform": "whatsapp",
+                })
 
         # Explicit websites
         if re.fullmatch(r"(?:open|go to|start|launch)\s+(?:youtube|yt)", low):
