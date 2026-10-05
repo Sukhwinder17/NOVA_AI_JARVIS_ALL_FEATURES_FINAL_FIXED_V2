@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import json
 import platform
 import subprocess
 import sys
@@ -227,6 +228,52 @@ def _schedule_local_windows(target_dt: datetime, task_name: str, script_path: Pa
     return task_name
 
 
+def _scheduled_sms_store() -> Path:
+    path = Path.home() / ".nova" / "sms_schedule"
+    path.mkdir(parents=True, exist_ok=True)
+    return path / "scheduled.json"
+
+
+def list_scheduled_sms() -> list[dict]:
+    store = _scheduled_sms_store()
+    try:
+        items = json.loads(store.read_text(encoding="utf-8"))
+        if not isinstance(items, list):
+            return []
+    except Exception:
+        return []
+    now = datetime.now().astimezone()
+    cleaned = []
+    for item in items:
+        try:
+            when = datetime.fromisoformat(item["send_at"])
+            if when > now:
+                cleaned.append(item)
+        except Exception:
+            continue
+    if cleaned != items:
+        store.write_text(json.dumps(cleaned, indent=2), encoding="utf-8")
+    return cleaned
+
+
+def cancel_local_scheduled_sms(task_name: str) -> str:
+    task_name = str(task_name or "").strip()
+    if not task_name:
+        return "Missing scheduled SMS job."
+    result = subprocess.run(
+        ["schtasks", "/Delete", "/TN", task_name, "/F"],
+        capture_output=True, text=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if result.returncode != 0:
+        return f"Could not cancel scheduled SMS: {result.stderr.strip() or result.stdout.strip()}"
+    store = _scheduled_sms_store()
+    items = list_scheduled_sms()
+    items = [x for x in items if x.get("job") != task_name]
+    store.write_text(json.dumps(items, indent=2), encoding="utf-8")
+    return "Scheduled SMS cancelled."
+
+
 def schedule_sms(recipient: str, message: str, send_at: datetime) -> str:
     """Schedule SMS locally; no SMSGate Cloud account is required."""
     try:
@@ -265,7 +312,17 @@ def schedule_sms(recipient: str, message: str, send_at: datetime) -> str:
     if not job_id:
         return "Could not register the scheduled SMS with Windows Task Scheduler."
 
-    local_time = send_at.strftime("%Y-%m-%d %I:%M:%S %p %Z")
+    store = _scheduled_sms_store()
+    items = list_scheduled_sms()
+    items.append({
+        "job": job_id,
+        "recipient": to,
+        "message": body,
+        "send_at": send_at.isoformat(),
+    })
+    store.write_text(json.dumps(items, indent=2), encoding="utf-8")
+
+    local_time = send_at.strftime("%d %b %Y, %I:%M %p %Z")
     return (
         f"⏰ SMS scheduled locally for {local_time} to {to}. "
         f"Route: Vivo hotspot / SMSGate Local Server. Job: {job_id}."
