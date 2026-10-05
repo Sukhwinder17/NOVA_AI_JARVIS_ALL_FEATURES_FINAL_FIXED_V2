@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime
 import random
 import threading
 import html
 import re
 
+from core.smsgate_sms import list_scheduled_sms, cancel_local_scheduled_sms
 from memory.conversation_history import load_history
 
 from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF, pyqtSignal, QObject, QUrl
@@ -441,6 +443,37 @@ class NovaWindow(QMainWindow):
         header.addWidget(self.provider)
         main.addLayout(header)
 
+        # ---------------- SMS SCHEDULE DASHBOARD ----------------
+        sms_dash = QFrame()
+        sms_dash.setObjectName("smsDashboard")
+        sd = QHBoxLayout(sms_dash)
+        sd.setContentsMargins(12, 8, 12, 8)
+        sd.setSpacing(10)
+
+        dash_title = QLabel("⏰ SMS SCHEDULE")
+        dash_title.setObjectName("smsDashTitle")
+        dash_title.setFixedWidth(125)
+        sd.addWidget(dash_title)
+
+        self.sms_schedule_label = QLabel("No scheduled SMS")
+        self.sms_schedule_label.setObjectName("smsDashText")
+        self.sms_schedule_label.setWordWrap(False)
+        sd.addWidget(self.sms_schedule_label, 1)
+
+        refresh_sms = QPushButton("↻")
+        refresh_sms.setToolTip("Refresh scheduled SMS")
+        refresh_sms.setFixedWidth(34)
+        refresh_sms.clicked.connect(self.refresh_sms_dashboard)
+        sd.addWidget(refresh_sms)
+
+        main.addWidget(sms_dash)
+
+        # Refresh the small dashboard without blocking NOVA.
+        self.sms_dash_timer = QTimer(self)
+        self.sms_dash_timer.timeout.connect(self.refresh_sms_dashboard)
+        self.sms_dash_timer.start(2000)
+        self.refresh_sms_dashboard()
+
         # ---------------- MAIN ----------------
         content = QHBoxLayout()
         content.setSpacing(16)
@@ -677,6 +710,23 @@ class NovaWindow(QMainWindow):
             font-size: 8px;
             padding-left: 2px;
         }
+        #smsDashboard {
+            background: #06151e;
+            border: 1px solid #123f51;
+            border-radius: 12px;
+            min-height: 34px;
+            max-height: 48px;
+        }
+        #smsDashTitle {
+            color: #5deaff;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 1.5px;
+        }
+        #smsDashText {
+            color: #9bdce8;
+            font-size: 10px;
+        }
         QScrollArea { background: transparent; border: none; }
         QScrollBar:vertical {
             width: 6px;
@@ -759,6 +809,24 @@ class NovaWindow(QMainWindow):
                 self.scroll.verticalScrollBar().maximum()
             ),
         )
+
+    def refresh_sms_dashboard(self):
+        try:
+            items = list_scheduled_sms()
+            if not items:
+                self.sms_schedule_label.setText("No scheduled SMS")
+                return
+            parts = []
+            for item in items[:3]:
+                when = datetime.fromisoformat(item["send_at"]).astimezone()
+                msg = str(item.get("message", "")).replace("\n", " ")
+                if len(msg) > 38:
+                    msg = msg[:35] + "..."
+                parts.append(f'{when.strftime("%d %b %I:%M %p")} → {item.get("recipient","")}  "{msg}"')
+            extra = f"  +{len(items)-3} more" if len(items) > 3 else ""
+            self.sms_schedule_label.setText("   |   ".join(parts) + extra)
+        except Exception as exc:
+            self.sms_schedule_label.setText(f"SMS dashboard unavailable: {exc}")
 
     def run_quick(self, command):
         self.input.setText(command)
