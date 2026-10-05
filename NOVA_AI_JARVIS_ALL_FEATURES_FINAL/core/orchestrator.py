@@ -170,12 +170,55 @@ class NovaOrchestrator:
         #   "send SMS to 123... at 7:30 PM"
         #   NOVA: "Type your message."
         #   User: "my full message in any words"
+        def _parse_scheduled_datetime(text_value: str):
+            """Parse explicit dates such as '6 Oct 5 PM'."""
+            now = datetime.now().astimezone()
+            s = re.sub(r"\s+", " ", text_value.strip())
+            m = re.search(
+                r"\b(?P<day>\d{1,2})(?:st|nd|rd|th)?\s+"
+                r"(?P<month>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
+                r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|"
+                r"nov(?:ember)?|dec(?:ember)?)(?:\s+(?P<year>20\d{2}))?\s+"
+                r"(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)\b",
+                s, re.I,
+            )
+            if not m:
+                return None
+            months = {"jan":1,"feb":2,"mar":3,"apr":4,"may":5,"jun":6,
+                      "jul":7,"aug":8,"sep":9,"oct":10,"nov":11,"dec":12}
+            month = months[m.group("month").lower()[:3]]
+            day = int(m.group("day"))
+            year = int(m.group("year") or now.year)
+            hour = int(m.group("hour"))
+            minute = int(m.group("minute") or 0)
+            if hour < 1 or hour > 12 or minute > 59:
+                raise ValueError
+            if m.group("ampm").lower() == "pm" and hour != 12:
+                hour += 12
+            elif m.group("ampm").lower() == "am" and hour == 12:
+                hour = 0
+            try:
+                target = now.replace(year=year, month=month, day=day,
+                                    hour=hour, minute=minute, second=0, microsecond=0)
+            except ValueError:
+                raise ValueError
+            if not m.group("year") and target <= now:
+                target = target.replace(year=target.year + 1)
+            if target <= now:
+                raise ValueError("past_time")
+            return target
+
         no_body_patterns = [
+            r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)\s+(?P<date>\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+20\d{2})?)\s+(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?$""",
             r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)\s+(?:(?P<day>tomorrow)\s+)?at\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?$""",
             r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+at\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)$""",
         ]
 
         def _scheduled_target(match):
+            if match.groupdict().get("date"):
+                return _parse_scheduled_datetime(
+                    f"{match.group('date')} {match.group('hour')}:{match.group('minute') or '00'} {match.group('ampm') or ''}"
+                )
             hour = int(match.group("hour"))
             minute = int(match.group("minute") or 0)
             ampm = (match.group("ampm") or "").lower()
@@ -208,7 +251,7 @@ class NovaOrchestrator:
                         "recipient": m.group("recipient").strip(),
                         "trigger_at_ms": int(target.timestamp() * 1000),
                     }
-                    when = target.strftime("%Y-%m-%d %I:%M %p")
+                    when = target.strftime("%d %b %Y, %I:%M %p")
                     return (
                         f"Sure. Type your message now. I will schedule the SMS to "
                         f"{m.group('recipient').strip()} for {when}."
@@ -219,6 +262,7 @@ class NovaOrchestrator:
                     return "Please give me a valid time, such as 7:30 PM."
 
         scheduled_sms_patterns = [
+            r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)\s+(?P<date>\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+20\d{2})?)\s+(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?\s+(?:saying|say|that\s+says|:)\s*["']?(?P<message>.+?)["']?$""",
             r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)\s+(?:(?P<day>tomorrow)\s+)?at\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?\s+(?:saying|say|that\s+says|:)\s*["']?(?P<message>.+?)["']?$""",
             r"""^(?:schedule\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)|send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?))\s+at\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?\s+to\s+(?P<recipient>\+?\d[\d\s().-]{4,}?)\s+(?:saying|say|that\s+says|:)\s*["']?(?P<message>.+?)["']?$""",
         ]
