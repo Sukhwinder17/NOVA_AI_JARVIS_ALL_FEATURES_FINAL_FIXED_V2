@@ -30,6 +30,7 @@ def _clean(path):
 
 
 def _fallback_search(query: str, limit: int = 40) -> list[str]:
+    """Fallback with Everything-like substring matching on names and paths."""
     terms = [w.lower() for w in query.split() if w]
     found = []
     seen = set()
@@ -45,17 +46,23 @@ def _fallback_search(query: str, limit: int = 40) -> list[str]:
         if not root.exists():
             continue
         try:
-            # Walk top-level and subdirectories (depth 3)
             for path in root.rglob("*"):
-                if path.is_file():
-                    name_lower = path.name.lower()
-                    if all(term in name_lower for term in terms):
-                        full_str = str(path.resolve())
-                        if full_str.lower() not in seen:
-                            seen.add(full_str.lower())
+                # Everything shows both files and folders. Match against the
+                # entire path so a query can match either a name or a parent folder.
+                try:
+                    if not (path.is_file() or path.is_dir()):
+                        continue
+                    full_str = str(path.resolve())
+                    searchable = full_str.lower()
+                    if all(term in searchable for term in terms):
+                        key = full_str.lower()
+                        if key not in seen:
+                            seen.add(key)
                             found.append(full_str)
                             if len(found) >= limit:
                                 return found
+                except (OSError, PermissionError):
+                    continue
         except Exception:
             continue
     return found
