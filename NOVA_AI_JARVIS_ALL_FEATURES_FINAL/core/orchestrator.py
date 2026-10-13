@@ -59,7 +59,7 @@ class NovaOrchestrator:
     @staticmethod
     def _extract_file_search_query(text: str) -> str:
         """Return only the target filename/topic, never the full spoken command."""
-        raw = str(text or "").strip().strip('"\\'')
+        raw = str(text or "").strip().strip("\\\"'")
         # Explicit filename forms have priority: everything after "file name"
         # or "filename" is the user's search term.
         m = re.search(
@@ -67,7 +67,7 @@ class NovaOrchestrator:
             raw, re.I,
         )
         if m:
-            query = m.group(1).strip().strip('"\\'')
+            query = m.group(1).strip().strip("\\\"'")
             query = re.sub(r"\s+(?:please|thanks|thank you)$", "", query, flags=re.I)
             return query.strip()
 
@@ -83,7 +83,7 @@ class NovaOrchestrator:
         for pattern in patterns:
             m = re.search(pattern, raw, re.I)
             if m:
-                query = m.group(1).strip().strip('"\\'')
+                query = m.group(1).strip().strip("\\\"'")
                 query = re.sub(r"^(?:named|called|for)\s+", "", query, flags=re.I)
                 query = re.sub(r"\s+(?:please|thanks|thank you)$", "", query, flags=re.I)
                 return query.strip()
