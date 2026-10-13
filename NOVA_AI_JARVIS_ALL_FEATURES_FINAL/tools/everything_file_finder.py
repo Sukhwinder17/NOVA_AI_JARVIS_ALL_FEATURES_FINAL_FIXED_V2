@@ -143,12 +143,14 @@ def search(query: str, limit: int = 40):
             # Use explicit -search and wait for the Everything database to be
             # ready. ES can otherwise return an empty result immediately after
             # Everything starts even though the GUI already shows the files.
+            # ES.exe accepts the search text as a positional argument.
+            # "-search" is a GUI switch for Everything.exe, not an ES search
+            # option; passing it here can cause unrelated results. Keep folders
+            # as well as files, matching the Everything GUI's default results.
             args += [
                 "-n", str(limit),
-                "/a-d",
-                "-match-path",
                 "-timeout", "10000",
-                "-search", search_query,
+                search_query,
             ]
             result = subprocess.run(
                 args,
