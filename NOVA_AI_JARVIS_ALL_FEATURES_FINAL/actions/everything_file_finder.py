@@ -8,7 +8,7 @@ def everything_file_finder(parameters: dict, player=None, **kwargs) -> str:
         if player and hasattr(player,'write_log'): player.write_log('[files] '+result)
         return result
     query=str(p.get('query','')).strip()
-    limit=max(5,min(100,int(p.get('limit',40) or 40)))
+    limit=max(5,min(1000,int(p.get('limit',500) or 500)))
     rows, cleaned=search(query,limit)
     task_manager = kwargs.get('task_manager')
     if task_manager is not None and hasattr(task_manager, 'set_file_results'):
@@ -21,4 +21,4 @@ def everything_file_finder(parameters: dict, player=None, **kwargs) -> str:
     if player and hasattr(player,'write_log'): player.write_log('[files] '+result)
     return result
 
-TOOL={'name':'everything_file_finder','description':'Searches the entire Windows PC with Everything and returns a clean numbered list. Use for natural-language requests to find files/projects/PDFs/documents. Then use action=open with the recent result number or filename to open one.', 'parameters':{'type':'OBJECT','properties':{'action':{'type':'STRING','description':'search | open'},'query':{'type':'STRING','description':'What to find anywhere on the PC'},'limit':{'type':'INTEGER','description':'Maximum results 5-100'},'ref':{'type':'STRING','description':'Recent result number or filename for open'}},'required':['action']},'handler':everything_file_finder}
+TOOL={'name':'everything_file_finder','description':'Searches the entire Windows PC with Everything and returns a clean numbered list. Use for natural-language requests to find files/projects/PDFs/documents. Then use action=open with the recent result number or filename to open one.', 'parameters':{'type':'OBJECT','properties':{'action':{'type':'STRING','description':'search | open'},'query':{'type':'STRING','description':'What to find anywhere on the PC'},'limit':{'type':'INTEGER','description':'Maximum results 5-1000 (default 500)'},'ref':{'type':'STRING','description':'Recent result number or filename for open'}},'required':['action']},'handler':everything_file_finder}
