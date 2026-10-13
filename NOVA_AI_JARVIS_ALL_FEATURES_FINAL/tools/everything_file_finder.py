@@ -29,7 +29,7 @@ def _clean(path):
     return p
 
 
-def _fallback_search(query: str, limit: int = 40) -> list[str]:
+def _fallback_search(query: str, limit: int = 500) -> list[str]:
     """Fallback with Everything-like substring matching on names and paths."""
     terms = [w.lower() for w in query.split() if w]
     found = []
@@ -97,7 +97,7 @@ def show_everything_search(query: str) -> bool:
     except Exception:
         return False
 
-def search(query: str, limit: int = 40):
+def search(query: str, limit: int = 500):
     global _last
 
     exe = Path(config.EVERYTHING_EXE)
