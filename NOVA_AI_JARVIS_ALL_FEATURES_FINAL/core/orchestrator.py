@@ -57,14 +57,49 @@ class NovaOrchestrator:
         )
 
     @staticmethod
+    def _extract_file_search_query(text: str) -> str:
+        """Return only the target filename/topic, never the full spoken command."""
+        raw = str(text or "").strip().strip('"\\'')
+        # Explicit filename forms have priority: everything after "file name"
+        # or "filename" is the user's search term.
+        m = re.search(
+            r"\b(?:file\s+name|filename)\s*(?:is|:|called|named)?\s+(.+)$",
+            raw, re.I,
+        )
+        if m:
+            query = m.group(1).strip().strip('"\\'')
+            query = re.sub(r"\s+(?:please|thanks|thank you)$", "", query, flags=re.I)
+            return query.strip()
+
+        # Natural phrasing: "find my tennis file", "search for tennis files",
+        # "find files named tennisv.py", "can you please find the file tennisv.py".
+        patterns = [
+            r"\b(?:files?|documents?|folders?)\s+(?:named|called|matching|containing)\s+(.+)$",
+            r"\b(?:find|search(?:\s+for)?|locate|look\s+for|show\s+me)\s+(?:me\s+)?(?:the\s+)?(?:file|files|document|documents|folder|folders)\s+(.+)$",
+            r"\bmy\s+(.+?)\s+files?\s*$",
+            r"\b(?:find|search(?:\s+for)?|locate|look\s+for|show\s+me)\s+(?:my\s+)?(.+?)\s+files?\s*$",
+            r"\b(?:find|search(?:\s+for)?|locate|look\s+for|show\s+me)\s+(?:my\s+)?(.+?)\s+(?:file|document|folder)\s*$",
+        ]
+        for pattern in patterns:
+            m = re.search(pattern, raw, re.I)
+            if m:
+                query = m.group(1).strip().strip('"\\'')
+                query = re.sub(r"^(?:named|called|for)\s+", "", query, flags=re.I)
+                query = re.sub(r"\s+(?:please|thanks|thank you)$", "", query, flags=re.I)
+                return query.strip()
+
+        # Last-resort cleanup for broader natural-language requests.
+        return NovaOrchestrator._clean_search_query(raw)
+
+    @staticmethod
     def _clean_search_query(text: str) -> str:
         q = re.sub(
-            r"\b(?:find|search|locate|look for|show me|search for|look up|google|web|internet|network)\b",
+            r"\b(?:can you please|could you please|can you|could you|please|find|search|locate|look for|show me|search for|look up|google|web|internet|network)\b",
             " ", text, flags=re.I,
         )
         q = re.sub(
-            r"\b(?:my|the|all|on my|in my|laptop|computer|pc|file|files|file name|filename|"
-            r"document|documents|folder|folders|related to|related|named|name|online|on the web)\b",
+            r"\b(?:file\s+name|filename|files?|file|my|the|all|on my|in my|laptop|computer|pc|"
+            r"document|documents|folder|folders|related to|related|named|name|online|on the web|please)\b",
             " ", q, flags=re.I,
         )
         return re.sub(r"\s+", " ", q).strip()
@@ -458,8 +493,7 @@ class NovaOrchestrator:
         # Natural Language Task Planning & Orchestration layer
         # Handle PC file searches before the task planner.
         if re.search(r"\b(?:find|search|locate|look for|show me)\b", low) and re.search(r"\b(?:file|files|pdf|project|document|folder|python|code|dataset|image|video|filename|file\s+name)\b", low):
-            exact = re.search(r"\bmy\s+(.+?)\s+files?\b", t, re.I)
-            q = exact.group(1).strip() if exact else self._clean_search_query(t)
+            q = self._extract_file_search_query(t)
             if not q:
                 q = t
             result = self._run("everything_file_finder", {"action": "search", "query": q, "limit": 50})
@@ -551,11 +585,7 @@ class NovaOrchestrator:
         ):
             # For natural commands like "find my gradient descent files",
             # Everything must receive only the filename phrase between "my" and "files".
-            exact = re.search(r"\bmy\s+(.+?)\s+files?\b", t, re.I)
-            if exact:
-                q = exact.group(1).strip()
-            else:
-                q = self._clean_search_query(t)
+            q = self._extract_file_search_query(t)
             if not q:
                 q = t
             result = self._run("everything_file_finder", {
