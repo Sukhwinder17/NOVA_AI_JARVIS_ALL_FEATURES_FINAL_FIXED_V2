@@ -496,7 +496,7 @@ class NovaOrchestrator:
             q = self._extract_file_search_query(t)
             if not q:
                 q = t
-            result = self._run("everything_file_finder", {"action": "search", "query": q, "limit": 50})
+            result = self._run("everything_file_finder", {"action": "search", "query": q, "limit": 500})
             self._last_files = True
             return result
 
@@ -589,7 +589,7 @@ class NovaOrchestrator:
             if not q:
                 q = t
             result = self._run("everything_file_finder", {
-                "action": "search", "query": q, "limit": 50
+                "action": "search", "query": q, "limit": 500
             })
             self._last_files = True
             return result
