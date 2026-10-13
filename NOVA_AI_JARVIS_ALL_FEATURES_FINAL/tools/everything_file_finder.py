@@ -219,6 +219,26 @@ def search(query: str, limit: int = 40):
         if len(out) >= limit:
             break
 
+    # Reliable local fallback: the Everything GUI can show results while its
+    # ES command-line client is disconnected or incompatible. In that case,
+    # search common user folders and the current project directory by filename.
+    # This keeps file search useful instead of falsely reporting zero results.
+    if not out:
+        try:
+            fallback = _fallback_search(q, limit)
+            for p in fallback:
+                cleaned = _clean(p)
+                if not cleaned:
+                    continue
+                key = cleaned.lower()
+                if key not in seen:
+                    seen.add(key)
+                    out.append(cleaned)
+                if len(out) >= limit:
+                    break
+        except Exception:
+            pass
+
     _last = out
 
     return out, q
