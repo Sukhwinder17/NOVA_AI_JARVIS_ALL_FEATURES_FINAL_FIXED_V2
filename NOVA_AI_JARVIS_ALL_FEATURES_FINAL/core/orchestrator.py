@@ -490,6 +490,20 @@ class NovaOrchestrator:
         if re.fullmatch(r"(?:email|mail)\s+(?:accounts?|connected)", low):
             return self._run("email_manager", {"action": "accounts"})
 
+        # Direct file/folder listing commands must route to file_controller,
+        # not fall through to the LLM planner (which may silently do nothing).
+        if re.search(r"\b(?:list|show|display|view)\b", low) and re.search(
+            r"\b(?:downloads?|documents?|desktop|files? on my desktop|files? in my downloads|files? in my documents)\b",
+            low,
+        ):
+            if re.search(r"\bdownloads?\b", low):
+                folder = "downloads"
+            elif re.search(r"\bdocuments?\b", low):
+                folder = "documents"
+            else:
+                folder = "desktop"
+            return self._run("file_controller", {"action": "list", "path": folder})
+
         # Natural Language Task Planning & Orchestration layer
         # Handle PC file searches before the task planner.
         if re.search(r"\b(?:find|search|locate|look for|show me)\b", low) and re.search(r"\b(?:file|files|pdf|project|document|folder|python|code|dataset|image|video|filename|file\s+name)\b", low):
