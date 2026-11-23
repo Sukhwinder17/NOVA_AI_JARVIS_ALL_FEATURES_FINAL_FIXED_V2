@@ -560,6 +560,12 @@ class NovaWindow(QMainWindow):
             chips.addWidget(chip)
         rl.addLayout(chips)
 
+        # NOVA WA workspace: personal chats are imported manually; no personal-account automation.
+        wa_button = QPushButton("NOVA WA  ✦")
+        wa_button.setObjectName("sendButton")
+        wa_button.clicked.connect(self.open_whatsapp_wa)
+        rl.addWidget(wa_button)
+
         # Composer.
         row = QHBoxLayout()
         row.setSpacing(8)
@@ -615,6 +621,15 @@ class NovaWindow(QMainWindow):
             self._tts = None
 
         self.show()
+
+    def open_whatsapp_wa(self):
+        try:
+            from ui.whatsapp_wa_dialog import NovaWADialog
+            dialog = NovaWADialog(self)
+            dialog.exec()
+        except Exception as exc:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "NOVA WA", f"Could not open NOVA WA: {exc}")
 
     def css(self):
         return """
