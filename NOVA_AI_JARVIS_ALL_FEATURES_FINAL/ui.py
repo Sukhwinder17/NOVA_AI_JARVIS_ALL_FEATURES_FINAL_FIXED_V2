@@ -896,6 +896,45 @@ class NovaWindow(QMainWindow):
         self.add_message("YOU", text)
         low = text.lower().strip()
 
+        if low in ("/whatsapp setup", "/whatsapp unlock", "/whatsapp lock", "/whatsapp token"):
+            try:
+                from actions import whatsapp_security as ws
+                if low == "/whatsapp setup":
+                    if ws.is_configured():
+                        self.add_message("NOVA", "A WhatsApp password is already configured. Use /whatsapp unlock.")
+                    else:
+                        first, ok = QInputDialog.getText(self, "Set WhatsApp Password", "Create a separate password (10+ characters):", QLineEdit.EchoMode.Password)
+                        if not ok or not first:
+                            self.add_message("NOVA", "Password setup cancelled.")
+                        else:
+                            second, ok2 = QInputDialog.getText(self, "Confirm WhatsApp Password", "Enter the same password again:", QLineEdit.EchoMode.Password)
+                            if ok2 and first == second:
+                                ws.setup_password(first)
+                                self.add_message("NOVA", "WhatsApp password created. WhatsApp is unlocked for this NOVA session. Use /whatsapp lock when finished.")
+                            else:
+                                self.add_message("NOVA", "Passwords did not match. No password was saved.")
+                elif low == "/whatsapp unlock":
+                    if not ws.is_configured():
+                        self.add_message("NOVA", "No password is set. Run /whatsapp setup first.")
+                    else:
+                        pw, ok = QInputDialog.getText(self, "Unlock WhatsApp", "Enter your NOVA WhatsApp password:", QLineEdit.EchoMode.Password)
+                        if ok and ws.unlock(pw):
+                            self.add_message("NOVA", "WhatsApp unlocked for this session.")
+                        elif ok:
+                            self.add_message("NOVA", "Incorrect password.")
+                elif low == "/whatsapp lock":
+                    ws.lock()
+                    self.add_message("NOVA", "WhatsApp locked.")
+                else:
+                    ws.require_unlocked()
+                    token, ok = QInputDialog.getText(self, "Save WPPConnect Token", "Paste the session token. It will be encrypted with Windows DPAPI:", QLineEdit.EchoMode.Password)
+                    if ok and token:
+                        ws.save_token(token)
+                        self.add_message("NOVA", "WPPConnect token encrypted and saved locally.")
+            except Exception as exc:
+                self.add_message("NOVA", f"WhatsApp security: {exc}")
+            return
+
         if low in ("listen", "start listening", "listen now"):
             self.start_listening()
             self.add_message("NOVA", "Listening.")
