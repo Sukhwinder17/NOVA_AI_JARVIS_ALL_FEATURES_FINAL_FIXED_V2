@@ -1,223 +1,116 @@
 from __future__ import annotations
 
-import asyncio
+import json
+import queue
 import threading
-from pathlib import Path
+import time
+import uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from core import config
+_BRIDGE_HOST = "127.0.0.1"
+_BRIDGE_PORT = 8765
+_PENDING = queue.Queue()
+_WAITING: dict[str, tuple[threading.Event, dict]] = {}
+_WAITING_LOCK = threading.Lock()
+_SERVER = None
 
-_WA_LOCK = threading.Lock()
 
+class _BridgeHandler(BaseHTTPRequestHandler):
+    def log_message(self, *_args):
+        return
 
-async def _first_visible(locators, timeout_ms: int = 2500):
-    """Return the first visible locator from a list of Playwright locators."""
-    for locator in locators:
+    def _json(self, status: int, payload: dict):
+        raw = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def do_OPTIONS(self):
+        self._json(204, {})
+
+    def do_GET(self):
+        if self.path != "/next":
+            self._json(404, {"error": "not found"})
+            return
         try:
-            item = locator.first
-            await item.wait_for(state="visible", timeout=timeout_ms)
-            return item
-        except Exception:
-            continue
-    return None
+            command = _PENDING.get_nowait()
+        except queue.Empty:
+            self._json(200, {})
+            return
+        self._json(200, command)
 
-
-async def _whatsapp_flow(receiver: str, message: str) -> str:
-    """Attach to a NOVA-controlled Chrome via CDP and use a new WhatsApp tab."""
-    import os
-    import subprocess
-    import time
-    import urllib.error
-    import urllib.request
-
-    from playwright.async_api import async_playwright
-
-    debug_port = int(os.getenv("NOVA_CHROME_DEBUG_PORT", "9222"))
-    debug_url = f"http://127.0.0.1:{debug_port}"
-
-    # Always use NOVA's dedicated Chrome profile. Never point an automation
-    # launch at Chrome's normal "User Data" directory: Windows/Chrome locks it
-    # while the user's everyday Chrome is running, and Chrome silently forwards
-    # launches to the existing process while ignoring the debugging flags.
-    # A separate profile allows NOVA to run alongside ordinary Chrome safely.
-    profile = Path(config.NOVA_BROWSER_PROFILE).expanduser().resolve()
-    profile.mkdir(parents=True, exist_ok=True)
-
-    def cdp_ready() -> bool:
+    def do_POST(self):
+        if self.path != "/complete":
+            self._json(404, {"error": "not found"})
+            return
         try:
-            with urllib.request.urlopen(debug_url + "/json/version", timeout=1.5) as response:
-                return response.status == 200
+            length = min(int(self.headers.get("Content-Length", "0")), 20000)
+            data = json.loads(self.rfile.read(length).decode("utf-8"))
+            request_id = str(data.get("id", ""))
+            with _WAITING_LOCK:
+                waiting = _WAITING.get(request_id)
+            if waiting:
+                event, result_box = waiting
+                result_box["result"] = str(data.get("result", "WhatsApp task finished."))
+                event.set()
+            self._json(200, {"ok": True})
+        except Exception as exc:
+            self._json(400, {"error": str(exc)})
+
+
+def _ensure_bridge():
+    global _SERVER
+    if _SERVER is not None:
+        return True
+    try:
+        server = ThreadingHTTPServer((_BRIDGE_HOST, _BRIDGE_PORT), _BridgeHandler)
+        server.daemon_threads = True
+        thread = threading.Thread(target=server.serve_forever, name="NOVA-WhatsApp-Bridge", daemon=True)
+        thread.start()
+        _SERVER = server
+        return True
+    except OSError:
+        # A bridge already bound to the configured loopback port may be active.
+        import urllib.request
+        try:
+            with urllib.request.urlopen(f"http://{_BRIDGE_HOST}:{_BRIDGE_PORT}/next", timeout=1):
+                return True
         except Exception:
             return False
 
-    async with async_playwright() as playwright:
-        if not cdp_ready():
-            # Start an isolated NOVA Chrome profile. The user's normal Chrome
-            # can remain open; this process does not reuse or lock its profile.
-            chrome_exe = Path(os.environ.get("PROGRAMFILES", r"C:\\Program Files")) / "Google" / "Chrome" / "Application" / "chrome.exe"
-            if not chrome_exe.exists():
-                chrome_exe = Path(os.environ.get("PROGRAMFILES(X86)", r"C:\\Program Files (x86)")) / "Google" / "Chrome" / "Application" / "chrome.exe"
-            if not chrome_exe.exists():
-                return "Google Chrome executable was not found. Install Chrome or set its path for NOVA."
 
-            args = [
-                str(chrome_exe),
-                f"--remote-debugging-port={debug_port}",
-                f"--user-data-dir={profile}",
-                "--profile-directory=Default",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--start-maximized",
-                config.WHATSAPP_URL,
-            ]
-            subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            deadline = asyncio.get_running_loop().time() + 30
-            while asyncio.get_running_loop().time() < deadline and not cdp_ready():
-                await asyncio.sleep(0.5)
-            if not cdp_ready():
-                return (
-                    "NOVA could not start its dedicated Chrome session. "
-                    "Check whether another app is using debugging port "
-                    f"{debug_port}, then retry. Your normal Chrome was not closed; "
-                    "no WhatsApp message was sent."
-                )
+def _whatsapp_web(receiver: str, message: str) -> str:
+    if not _ensure_bridge():
+        return "NOVA's local WhatsApp bridge could not start on 127.0.0.1:8765. Check whether another app is using that port. No message was sent."
 
-        browser = await playwright.chromium.connect_over_cdp(debug_url)
-        contexts = browser.contexts
-        if not contexts:
-            return "NOVA connected to Chrome, but no browser context was available. No message was sent."
-        context = contexts[0]
+    request_id = uuid.uuid4().hex
+    event = threading.Event()
+    result_box: dict = {}
+    command = {"id": request_id, "receiver": receiver, "message": message}
 
-        # Always create a new tab in the same Chrome window/session rather than
-        # launching another Chrome process or stealing an unrelated tab.
-        page = await context.new_page()
-        try:
-            await page.goto(config.WHATSAPP_URL, wait_until="domcontentloaded", timeout=60000)
-
-            deadline = asyncio.get_running_loop().time() + 180
-            search = None
-            while asyncio.get_running_loop().time() < deadline:
-                try:
-                    current_url = page.url.lower()
-                    body = (await page.locator("body").inner_text(timeout=3000)).lower()
-                except Exception:
-                    await asyncio.sleep(2)
-                    continue
-
-                if "web.whatsapp.com" not in current_url:
-                    await page.goto(config.WHATSAPP_URL, wait_until="domcontentloaded", timeout=60000)
-                    continue
-
-                search = await _first_visible([
-                    page.get_by_role("textbox", name="Search or start a new chat"),
-                    page.locator('div[contenteditable="true"][data-tab="3"]'),
-                    page.locator('div[contenteditable="true"][role="textbox"]'),
-                    page.locator('input[placeholder*="Search"]'),
-                ], timeout_ms=1000)
-                if search is not None:
-                    break
-
-                if "scan the qr code" in body or "link with phone number" in body:
-                    await asyncio.sleep(2)
-                    continue
-                await asyncio.sleep(2)
-            else:
-                return (
-                    "WhatsApp Web is not logged in on the Chrome profile NOVA opened. "
-                    "Scan the QR code in this new tab once, wait for chats to load, "
-                    "then repeat your command. No message was sent."
-                )
-
-            await search.click()
-            await search.fill(receiver)
-            await asyncio.sleep(1.5)
-
-            result = None
-            candidates = page.locator('[role="listitem"], [data-testid*="cell-frame"], [role="option"]')
-            try:
-                count = await candidates.count()
-            except Exception:
-                count = 0
-
-            wanted = receiver.casefold().strip()
-            for index in range(min(count, 40)):
-                candidate = candidates.nth(index)
-                try:
-                    if not await candidate.is_visible():
-                        continue
-                    label = (await candidate.inner_text(timeout=1000)).strip()
-                    first_line = label.splitlines()[0].strip() if label else ""
-                    if first_line.casefold() == wanted:
-                        result = candidate
-                        break
-                except Exception:
-                    continue
-
-            if result is None:
-                return f"I couldn't find an exact WhatsApp contact match for '{receiver}'. No message was sent."
-
-            await result.click()
-            await asyncio.sleep(1)
-            header = await _first_visible([
-                page.locator('header [title]'),
-                page.locator('header [dir="auto"]'),
-                page.locator('header'),
-            ], timeout_ms=4000)
-            if header is None:
-                return f"I opened a possible chat for '{receiver}', but couldn't verify its header. No message was sent."
-
-            header_text = (await header.inner_text(timeout=2000)).strip()
-            header_title = (await header.get_attribute("title")) or ""
-            if wanted not in (header_title + " " + header_text).casefold():
-                return (
-                    f"The opened chat does not clearly match '{receiver}' "
-                    f"(header: '{header_text[:100]}'). No message was sent."
-                )
-
-            composer = await _first_visible([
-                page.get_by_role("textbox", name="Type a message"),
-                page.locator('footer [contenteditable="true"][role="textbox"]'),
-                page.locator('footer [contenteditable="true"]'),
-            ], timeout_ms=5000)
-            if composer is None:
-                return f"Chat with '{receiver}' is open, but the message box wasn't found. No message was sent."
-
-            await composer.click()
-            await composer.fill(message)
-            send_button = await _first_visible([
-                page.get_by_role("button", name="Send"),
-                page.locator('button[aria-label="Send"]'),
-                page.locator('[data-testid="send"]'),
-            ], timeout_ms=2500)
-            if send_button is not None:
-                await send_button.click()
-            else:
-                await composer.press("Enter")
-
-            try:
-                await page.get_by_text(message, exact=True).last.wait_for(state="visible", timeout=10000)
-            except Exception:
-                return (
-                    f"The send action was triggered for '{receiver}', but I couldn't "
-                    "confirm the message in the conversation. Please check WhatsApp."
-                )
-            return f"WhatsApp message sent and visible in the chat with {receiver}."
-        finally:
-            # Keep the Chrome window and its tabs open for the user.
-            pass
-
-
-def _whatsapp_web(receiver: str, message: str, attachment_path: str | None = None) -> str:
-    if attachment_path:
-        return "WhatsApp file attachments are not handled by this verified text-message flow yet. No message was sent."
-    with _WA_LOCK:
-        try:
-            return asyncio.run(_whatsapp_flow(receiver, message))
-        except Exception as exc:
-            return f"WhatsApp Web could not complete the task: {exc}"
+    with _WAITING_LOCK:
+        _WAITING[request_id] = (event, result_box)
+    _PENDING.put(command)
+    try:
+        if not event.wait(timeout=210):
+            return (
+                "NOVA did not receive a response from its Chrome extension. "
+                "Install/enable the NOVA WhatsApp Bridge extension, keep NOVA running, "
+                "and reload the WhatsApp Web tab. No message was confirmed as sent."
+            )
+        return result_box.get("result", "WhatsApp bridge returned no result.")
+    finally:
+        with _WAITING_LOCK:
+            _WAITING.pop(request_id, None)
 
 
 def _desktop_send(app_name: str, receiver: str, message: str) -> str:
-    """Fallback for non-WhatsApp desktop messaging apps."""
     try:
         import pyautogui
         import pyperclip
@@ -250,9 +143,11 @@ def send_message(parameters: dict, player=None, **kwargs) -> str:
         return "Please specify a recipient."
     if not message and not attachment_path:
         return "Please specify the message content."
+    if attachment_path:
+        return "WhatsApp file attachments are not supported by the verified Chrome bridge yet. No message was sent."
 
     if platform in ("whatsapp", "whatsapp web", "wp", "wapp"):
-        result = _whatsapp_web(receiver, message, attachment_path)
+        result = _whatsapp_web(receiver, message)
     else:
         result = _desktop_send(platform.title(), receiver, message)
 
@@ -264,11 +159,12 @@ def send_message(parameters: dict, player=None, **kwargs) -> str:
 TOOL = {
     "name": "send_message",
     "description": (
-        "Send WhatsApp text messages using NOVA's persistent Chrome profile. "
-        "Open WhatsApp Web if needed, wait for QR login, search for the exact "
-        "contact, verify the chat header, then send and confirm the message. "
-        "If the recipient cannot be verified, do not send. Supports message_text "
-        "and receiver. Attachments are not supported by this verified flow."
+        "Send WhatsApp messages through the user's existing Chrome session using "
+        "the NOVA WhatsApp Bridge extension. It reuses an existing WhatsApp Web tab "
+        "or opens one in the current Chrome window, waits for QR login, searches "
+        "for an exact contact, verifies the chat header, then sends and confirms "
+        "the message. Never launches a separate Chrome profile. Requires the "
+        "NOVA WhatsApp Bridge extension to be installed and enabled."
     ),
     "parameters": {
         "type": "OBJECT",
@@ -276,7 +172,7 @@ TOOL = {
             "receiver": {"type": "STRING", "description": "Exact WhatsApp contact name or number"},
             "message_text": {"type": "STRING", "description": "Exact message text to send"},
             "platform": {"type": "STRING", "description": "whatsapp | whatsapp web"},
-            "attachment_path": {"type": "STRING", "description": "Optional attachment path (not supported by this flow)"},
+            "attachment_path": {"type": "STRING", "description": "Optional attachment path (not supported)"},
         },
         "required": ["receiver", "message_text"],
     },
