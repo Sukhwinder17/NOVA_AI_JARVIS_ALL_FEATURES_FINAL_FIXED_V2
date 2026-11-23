@@ -106,7 +106,7 @@ def _dpapi(raw: bytes, protect: bool) -> bytes:
     src, keep = _blob(raw)
     dst = _BLOB()
     if protect:
-        ok = crypt.CryptProtectData(ctypes.byref(src), "NOVA WhatsApp token", None, None, None, 0, ctypes.byref(dst))
+        ok = crypt.CryptProtectData(ctypes.byref(src), ctypes.c_wchar_p("NOVA WhatsApp token"), None, None, None, 0, ctypes.byref(dst))
     else:
         ok = crypt.CryptUnprotectData(ctypes.byref(src), None, None, None, None, 0, ctypes.byref(dst))
     if not ok:
