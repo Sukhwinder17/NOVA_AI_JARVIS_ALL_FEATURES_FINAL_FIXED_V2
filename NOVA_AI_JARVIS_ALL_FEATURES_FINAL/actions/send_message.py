@@ -25,19 +25,38 @@ async def _whatsapp_flow(receiver: str, message: str) -> str:
     """Use a persistent Chrome profile and WhatsApp Web's accessible DOM."""
     from playwright.async_api import async_playwright
 
-    profile = Path(config.NOVA_BROWSER_PROFILE).expanduser()
-    profile.mkdir(parents=True, exist_ok=True)
+    configured_profile = Path(config.NOVA_BROWSER_PROFILE).expanduser()
+    # The default config used to create a separate NOVA profile, which caused
+    # WhatsApp to show a second QR login even when the user's normal Chrome was
+    # already authenticated. When that default is in use, reuse Chrome's
+    # standard Windows user-data directory and its Default profile instead.
+    automation_profile = (Path(config.BASE_DIR) / "data" / "browser_profile").resolve()
+    chrome_user_data = (
+        Path(__import__("os").environ.get("LOCALAPPDATA", ""))
+        / "Google" / "Chrome" / "User Data"
+    )
+    use_default_chrome_profile = (
+        configured_profile.resolve() == automation_profile
+        and chrome_user_data.exists()
+    )
+    if use_default_chrome_profile:
+        profile = chrome_user_data
+        profile_args = ["--profile-directory=Default"]
+    else:
+        profile = configured_profile
+        profile.mkdir(parents=True, exist_ok=True)
+        profile_args = []
 
     async with async_playwright() as playwright:
-        # This is NOVA's persistent Chrome profile. WhatsApp login is retained
-        # here between runs; it does not take over or close the user's other
-        # Chrome windows.
+        # Reuse the normal Chrome profile by default so the existing WhatsApp
+        # Web session is available to NOVA. Chrome must be closed first to
+        # release the profile lock; never copy or concurrently open its files.
         context = await playwright.chromium.launch_persistent_context(
             user_data_dir=str(profile),
             channel="chrome",
             headless=False,
             no_viewport=True,
-            args=["--start-maximized", "--disable-notifications"],
+            args=["--start-maximized", "--disable-notifications", *profile_args],
         )
         try:
             pages = context.pages
