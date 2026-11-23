@@ -173,7 +173,7 @@ class NovaWADialog(QDialog):
         item=self.module_lists["tasks"].currentItem()
         if not item: return
         import re
-        match=re.search(r"Task #(\\d+)",item.text())
+        match=re.search(r"Task #(\d+)",item.text())
         if not match: return
         try:
             from actions.whatsapp_wa.intelligence import approve_task
@@ -199,7 +199,7 @@ class NovaWADialog(QDialog):
         try:
             result=import_txt(path,self.chat_name.text().strip() or None)
             self.import_result.setText(f"Imported {result['messages']} messages from {result['title']}." if not result["duplicate"] else "This exact export has already been imported.")
-            self.refresh_overview()
+            self.refresh_overview(); self.refresh_all_modules()
         except Exception as exc:
             QMessageBox.warning(self,"Import failed",str(exc))
 
@@ -207,7 +207,7 @@ class NovaWADialog(QDialog):
         try:
             result=import_text(self.paste.toPlainText(),self.chat_name.text().strip() or "Pasted conversation")
             self.import_result.setText(f"Imported {result['messages']} selected messages." if not result["duplicate"] else "This exact selection has already been imported.")
-            self.paste.clear(); self.refresh_overview()
+            self.paste.clear(); self.refresh_overview(); self.refresh_all_modules()
         except Exception as exc:
             QMessageBox.warning(self,"Import failed",str(exc))
 
@@ -215,7 +215,7 @@ class NovaWADialog(QDialog):
         try:
             result=analyse_imported_messages()
             self.import_result.setText(f"Analysis complete. Risk indicators: {result['risks']}; task suggestions: {result['tasks']}; possible commitments: {result['commitments']}. Review all suggestions.")
-            self.refresh_overview()
+            self.refresh_overview(); self.refresh_all_modules()
         except Exception as exc:
             QMessageBox.warning(self,"Analysis failed",str(exc))
 
