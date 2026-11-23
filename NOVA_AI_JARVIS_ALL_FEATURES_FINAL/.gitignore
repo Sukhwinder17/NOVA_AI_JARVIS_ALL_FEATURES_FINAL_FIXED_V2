@@ -13,3 +13,6 @@ credentials.json
 
 # WhatsApp linked-device session data (never commit)
 data/whatsapp/
+
+# NOVA WA local conversation database and imported personal chat data
+data/whatsapp_wa/
