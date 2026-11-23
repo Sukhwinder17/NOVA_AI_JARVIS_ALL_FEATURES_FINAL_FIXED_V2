@@ -544,8 +544,8 @@ class NovaOrchestrator:
         for pattern in whatsapp_patterns:
             match = re.match(pattern, t, re.I | re.S)
             if match:
-                receiver = match.group(1).strip(" \\"'")
-                message_text = match.group(2).strip(" \\"'")
+                receiver = match.group(1).strip(" \"'")
+                message_text = match.group(2).strip(" \"'")
                 if receiver and message_text:
                     return self._run("send_message", {
                         "receiver": receiver,
