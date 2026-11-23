@@ -214,3 +214,6 @@ TOOL = {
     },
     "handler": whatsapp_manager,
 }
+
+# Resume persisted scheduled jobs whenever NOVA discovers this action at startup.
+_start_worker()
