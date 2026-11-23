@@ -537,9 +537,9 @@ class NovaOrchestrator:
         # before the LLM planner so a missing tool declaration cannot prevent
         # the command from reaching the bundled send_message handler.
         whatsapp_patterns = [
-            r"^send\\s+(?:a\\s+)?whatsapp\\s+message\\s+to\\s+(.+?)\\s+saying\\s+(.+)$",
-            r"^send\\s+whatsapp\\s+to\\s+(.+?)\\s+(?:saying|say)\\s+(.+)$",
-            r"^whatsapp\\s+(?:message\\s+)?to\\s+(.+?)\\s+(?:saying|say)\\s+(.+)$",
+            r"^send\s+(?:a\s+)?whatsapp\s+message\s+to\s+(.+?)\s+saying\s+(.+)$",
+            r"^send\s+whatsapp\s+to\s+(.+?)\s+(?:saying|say)\s+(.+)$",
+            r"^whatsapp\s+(?:message\s+)?to\s+(.+?)\s+(?:saying|say)\s+(.+)$",
         ]
         for pattern in whatsapp_patterns:
             match = re.match(pattern, t, re.I | re.S)
