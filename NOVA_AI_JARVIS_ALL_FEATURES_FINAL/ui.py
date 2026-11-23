@@ -624,7 +624,7 @@ class NovaWindow(QMainWindow):
 
     def open_whatsapp_wa(self):
         try:
-            from ui.whatsapp_wa_dialog import NovaWADialog
+            from whatsapp_wa_dialog import NovaWADialog
             dialog = NovaWADialog(self)
             dialog.exec()
         except Exception as exc:
