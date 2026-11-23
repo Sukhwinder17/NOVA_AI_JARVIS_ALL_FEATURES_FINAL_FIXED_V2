@@ -887,6 +887,14 @@ class NovaWindow(QMainWindow):
         if self._tts:
             self._tts.stop()
 
+    def closeEvent(self, event):
+        try:
+            from actions import whatsapp_security
+            whatsapp_security.lock()
+        except Exception:
+            pass
+        super().closeEvent(event)
+
     def send(self):
         text = self.input.text().strip()
         if not text:
