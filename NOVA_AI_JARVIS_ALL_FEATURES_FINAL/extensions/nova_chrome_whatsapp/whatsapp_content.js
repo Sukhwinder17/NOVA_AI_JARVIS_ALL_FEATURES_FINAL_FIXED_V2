@@ -7,7 +7,6 @@
 
   function findSearch() {
     const selectors = [
-      '[data-testid="chat-list-search"]',
       '[data-testid="chat-list-search"] [contenteditable="true"]',
       'div[contenteditable="true"][role="textbox"][data-tab="3"]',
       'div[contenteditable="true"][aria-label*="Search"]',
