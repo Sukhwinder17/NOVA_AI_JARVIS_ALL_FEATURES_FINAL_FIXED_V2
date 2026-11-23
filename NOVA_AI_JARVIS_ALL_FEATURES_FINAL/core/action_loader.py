@@ -174,20 +174,20 @@ def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
             continue
         try:
             module_name = f"actions.{path.stem}"
-            # Reuse the already-imported module when present so handlers are the
-            # same objects the rest of the app holds.
-            module = sys.modules.get(module_name)
-            if module is None:
-                spec = importlib.util.spec_from_file_location(module_name, path)
-                if spec is None or spec.loader is None:
-                    raise ImportError("could not build import spec")
-                module = importlib.util.module_from_spec(spec)
-                sys.modules[module_name] = module
-                try:
-                    spec.loader.exec_module(module)
-                except Exception:
-                    sys.modules.pop(module_name, None)
-                    raise
+            # Always load from the exact file currently being scanned.
+            # A stale sys.modules entry can hide a newly-added or updated TOOL.
+            importlib.invalidate_caches()
+            sys.modules.pop(module_name, None)
+            spec = importlib.util.spec_from_file_location(module_name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"could not build import spec for {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            try:
+                spec.loader.exec_module(module)
+            except Exception:
+                sys.modules.pop(module_name, None)
+                raise
 
             if getattr(module, "TOOL", None) is None:
                 continue   # not an action file — a helper/capture-only module
