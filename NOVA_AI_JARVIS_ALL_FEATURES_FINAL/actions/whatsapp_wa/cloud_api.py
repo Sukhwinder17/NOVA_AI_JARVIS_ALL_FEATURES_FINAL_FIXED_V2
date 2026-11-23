@@ -1,6 +1,6 @@
 from __future__ import annotations
 import hashlib,hmac,os,requests
-GRAPH_VERSION=os.getenv("NOVA_WA_GRAPH_VERSION","v23.0")
+GRAPH_VERSION=os.getenv("NOVA_WA_GRAPH_VERSION","v27.0")
 BASE_URL=f"https://graph.facebook.com/{GRAPH_VERSION}"
 def _credentials():
  token=os.getenv("NOVA_WA_ACCESS_TOKEN","").strip(); phone_id=os.getenv("NOVA_WA_PHONE_NUMBER_ID","").strip()
