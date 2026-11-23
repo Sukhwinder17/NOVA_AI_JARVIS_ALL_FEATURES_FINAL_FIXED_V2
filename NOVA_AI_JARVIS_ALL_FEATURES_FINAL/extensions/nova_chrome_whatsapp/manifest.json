@@ -1,14 +1,14 @@
 {
   "manifest_version": 3,
   "name": "NOVA WhatsApp Bridge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Connects NOVA desktop assistant to your existing Chrome WhatsApp Web tab.",
   "permissions": [
     "tabs"
   ],
   "host_permissions": [
-    "http://127.0.0.1:8765/*",
-    "http://localhost:8765/*",
+    "http://127.0.0.1:8766/*",
+    "http://localhost:8766/*",
     "https://web.whatsapp.com/*"
   ],
   "background": {
