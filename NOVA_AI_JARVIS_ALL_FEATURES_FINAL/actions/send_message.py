@@ -1,495 +1,270 @@
 from __future__ import annotations
 
-import atexit
-import ctypes
+import asyncio
 import threading
-import time
 from pathlib import Path
 
 from core import config
 
-
 _WA_LOCK = threading.Lock()
 
 
-def _cleanup_whatsapp():
-    # IMPORTANT:
-    # Do NOT close the user's Chrome browser.
-    pass
-
-
-atexit.register(_cleanup_whatsapp)
-
-
-def _find_chrome_window():
-    """Find a visible Chrome window on Windows."""
-
-    user32 = ctypes.windll.user32
-    windows = []
-
-    EnumWindowsProc = ctypes.WINFUNCTYPE(
-        ctypes.c_bool,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-    )
-
-    def callback(hwnd, _lparam):
-        if not user32.IsWindowVisible(hwnd):
-            return True
-
-        length = user32.GetWindowTextLengthW(hwnd)
-        if length <= 0:
-            return True
-
-        buffer = ctypes.create_unicode_buffer(length + 1)
-        user32.GetWindowTextW(hwnd, buffer, length + 1)
-
-        title = buffer.value.lower()
-
-        if "chrome" in title:
-            windows.append(hwnd)
-
-        return True
-
-    user32.EnumWindows(EnumWindowsProc(callback), 0)
-
-    return windows[0] if windows else None
-
-
-def _activate_chrome():
-    """Bring the user's existing Chrome window to the foreground."""
-
-    hwnd = _find_chrome_window()
-
-    if not hwnd:
-        return False
-
-    user32 = ctypes.windll.user32
-
-    try:
-        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-        user32.SetForegroundWindow(hwnd)
-        time.sleep(0.8)
-        return True
-    except Exception:
-        return False
-
-
-def _get_current_url():
-    """Read the current Chrome tab URL using the address bar."""
-
-    import pyautogui
-    import pyperclip
-
-    pyautogui.hotkey("ctrl", "l")
-    time.sleep(0.25)
-    pyautogui.hotkey("ctrl", "c")
-    time.sleep(0.25)
-
-    try:
-        return pyperclip.paste().strip()
-    except Exception:
-        return ""
-
-
-def _open_or_reuse_whatsapp():
-    """
-    Use the user's EXISTING Chrome window.
-
-    - If the current tab is WhatsApp Web, reuse it.
-    - Otherwise open WhatsApp Web in a new tab in the same Chrome.
-    - Never launch another Chrome process.
-    - Never create another Chrome profile.
-    """
-
-    import pyautogui
-    import pyperclip
-
-    if not _activate_chrome():
-        return False, "I could not find an open Chrome window."
-
-    current_url = _get_current_url().lower()
-
-    if "web.whatsapp.com" in current_url:
-        pyautogui.press("esc")
-        time.sleep(0.5)
-        return True, "existing"
-
-    # Current tab is not WhatsApp.
-    # Open WhatsApp in a new tab in the SAME Chrome window.
-    pyautogui.hotkey("ctrl", "l")
-    pyperclip.copy(config.WHATSAPP_URL)
-    pyautogui.hotkey("ctrl", "v")
-    pyautogui.press("enter")
-
-    time.sleep(4)
-
-    return True, "opened"
-
-
-def _wait_for_whatsapp(timeout=30):
-    """
-    Give WhatsApp Web enough time to load.
-
-    UI automation cannot inspect the DOM of a normal Chrome session
-    without a debugging connection, so readiness is confirmed by the
-    next UI operation rather than by pretending to inspect the page.
-    """
-
-    import pyautogui
-
-    deadline = time.monotonic() + timeout
-
-    time.sleep(4)
-
-    while time.monotonic() < deadline:
-        pyautogui.press("esc")
-        time.sleep(1)
-
-        # Continue once the normal WhatsApp UI has had time to render.
-        # The search step below is the actual functional check.
-        return True
-
-    return False
-
-
-def _open_new_chat():
-    """Open WhatsApp Web's New Chat interface."""
-
-    import pyautogui
-
-    pyautogui.hotkey("ctrl", "alt", "n")
-    time.sleep(1.5)
-
-
-def _search_contact_and_open(receiver):
-    """
-    Open the WhatsApp Web search box visible in the user's
-    current Chrome window, search the recipient, and open the chat.
-    """
-
-    import pyautogui
-    import pyperclip
-
-    receiver = str(receiver).strip()
-
-    if not receiver:
-        raise ValueError("Recipient name is empty.")
-
-    # Get the current Chrome window.
-    hwnd = _find_chrome_window()
-
-    if not hwnd:
-        raise RuntimeError("Chrome window was not found.")
-
-    user32 = ctypes.windll.user32
-
-    rect = ctypes.wintypes.RECT()
-
-    if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
-        raise RuntimeError("Could not read Chrome window position.")
-
-    left = rect.left
-    top = rect.top
-    width = rect.right - rect.left
-    height = rect.bottom - rect.top
-
-    # WhatsApp's visible:
-    # "Search or start a new chat"
-    #
-    # The search box is approximately 26.5% across
-    # and 25.5% down the Chrome window.
-    search_x = left + int(width * 0.265)
-    search_y = top + int(height * 0.255)
-
-    # Click the actual WhatsApp search box.
-    pyautogui.click(search_x, search_y)
-
-    time.sleep(0.5)
-
-    # Select anything already in the search box.
-    pyautogui.hotkey("ctrl", "a")
-
-    # Type recipient.
-    pyperclip.copy(receiver)
-    pyautogui.hotkey("ctrl", "v")
-
-    time.sleep(2)
-
-    # Select the matching search result.
-    pyautogui.press("enter")
-
-    time.sleep(2.5)
-
-    return True
-
-def _send_text(message):
-    """
-    Click the WhatsApp message composer and send the exact message.
-    """
-
-    import pyautogui
-    import pyperclip
-
-    message = str(message)
-
-    if not message.strip():
-        raise ValueError("Message is empty.")
-
-    hwnd = _find_chrome_window()
-
-    if not hwnd:
-        raise RuntimeError("Chrome window was not found.")
-
-    user32 = ctypes.windll.user32
-
-    rect = ctypes.wintypes.RECT()
-
-    if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
-        raise RuntimeError("Could not read Chrome window position.")
-
-    left = rect.left
-    top = rect.top
-    width = rect.right - rect.left
-    height = rect.bottom - rect.top
-
-    # WhatsApp message composer is at the bottom
-    # of the right-hand chat panel.
-    composer_x = left + int(width * 0.75)
-    composer_y = top + int(height * 0.935)
-
-    # Click composer.
-    pyautogui.click(composer_x, composer_y)
-
-    time.sleep(0.5)
-
-    # Type exact message.
-    pyperclip.copy(message)
-    pyautogui.hotkey("ctrl", "v")
-
-    time.sleep(0.5)
-
-    # Send.
-    pyautogui.press("enter")
-
-    time.sleep(2)
-
-    return True
+async def _first_visible(locators, timeout_ms: int = 2500):
+    """Return the first visible locator from a list of Playwright locators."""
+    for locator in locators:
+        try:
+            item = locator.first
+            await item.wait_for(state="visible", timeout=timeout_ms)
+            return item
+        except Exception:
+            continue
+    return None
+
+
+async def _whatsapp_flow(receiver: str, message: str) -> str:
+    """Use a persistent Chrome profile and WhatsApp Web's accessible DOM."""
+    from playwright.async_api import async_playwright
+
+    profile = Path(config.NOVA_BROWSER_PROFILE).expanduser()
+    profile.mkdir(parents=True, exist_ok=True)
+
+    async with async_playwright() as playwright:
+        # This is NOVA's persistent Chrome profile. WhatsApp login is retained
+        # here between runs; it does not take over or close the user's other
+        # Chrome windows.
+        context = await playwright.chromium.launch_persistent_context(
+            user_data_dir=str(profile),
+            channel="chrome",
+            headless=False,
+            no_viewport=True,
+            args=["--start-maximized", "--disable-notifications"],
+        )
+        try:
+            pages = context.pages
+            page = pages[0] if pages else await context.new_page()
+            whatsapp_pages = [p for p in pages if "web.whatsapp.com" in p.url]
+            if whatsapp_pages:
+                page = whatsapp_pages[0]
+            else:
+                await page.goto(config.WHATSAPP_URL, wait_until="domcontentloaded", timeout=60000)
+
+            # Detect login using WhatsApp's actual page UI, not a fixed sleep.
+            deadline = asyncio.get_running_loop().time() + 180
+            while asyncio.get_running_loop().time() < deadline:
+                try:
+                    current_url = page.url.lower()
+                    body = (await page.locator("body").inner_text(timeout=3000)).lower()
+                except Exception:
+                    await asyncio.sleep(2)
+                    continue
+
+                if "web.whatsapp.com" not in current_url:
+                    await page.goto(config.WHATSAPP_URL, wait_until="domcontentloaded", timeout=60000)
+                    continue
+
+                login_visible = (
+                    "scan the qr code" in body
+                    or "link with phone number" in body
+                    or await page.locator('canvas[aria-label*="Scan"], [data-ref]').count() > 0
+                )
+                search = await _first_visible([
+                    page.get_by_role("textbox", name="Search or start a new chat"),
+                    page.locator('div[contenteditable="true"][data-tab="3"]'),
+                    page.locator('div[contenteditable="true"][role="textbox"]'),
+                    page.locator('input[placeholder*="Search"]'),
+                ], timeout_ms=1000)
+
+                if search is not None:
+                    break
+                if login_visible:
+                    await asyncio.sleep(2)
+                    continue
+                await asyncio.sleep(2)
+            else:
+                return (
+                    "WhatsApp Web is still not logged in or its chat list did not load. "
+                    "Scan the QR code in the NOVA Chrome window, then ask me to send again."
+                )
+
+            # Search by the exact contact name/number.
+            await search.click()
+            await search.fill(receiver)
+            await asyncio.sleep(1.5)
+
+            # Find an exact visible result; do not press Enter on an arbitrary
+            # first result. WhatsApp's result rows commonly expose title/text.
+            result = None
+            candidates = page.locator('[role="listitem"], [data-testid*="cell-frame"], [role="option"]')
+            try:
+                count = await candidates.count()
+            except Exception:
+                count = 0
+
+            wanted = receiver.casefold().strip()
+            for index in range(min(count, 40)):
+                candidate = candidates.nth(index)
+                try:
+                    if not await candidate.is_visible():
+                        continue
+                    label = (await candidate.inner_text(timeout=1000)).strip()
+                    first_line = label.splitlines()[0].strip() if label else ""
+                    if first_line.casefold() == wanted:
+                        result = candidate
+                        break
+                except Exception:
+                    continue
+
+            if result is None:
+                # Some WhatsApp versions render search hits as buttons.
+                buttons = page.get_by_role("button")
+                try:
+                    count = await buttons.count()
+                except Exception:
+                    count = 0
+                for index in range(min(count, 60)):
+                    candidate = buttons.nth(index)
+                    try:
+                        if await candidate.is_visible():
+                            label = (await candidate.inner_text(timeout=700)).strip()
+                            if label.splitlines() and label.splitlines()[0].strip().casefold() == wanted:
+                                result = candidate
+                                break
+                    except Exception:
+                        continue
+
+            if result is None:
+                return f"I couldn't find an exact WhatsApp contact match for '{receiver}'. No message was sent."
+
+            await result.click()
+            await asyncio.sleep(1)
+
+            # Verify the chat header before sending.
+            header = await _first_visible([
+                page.locator('header [title]'),
+                page.locator('header [dir="auto"]'),
+                page.locator('header'),
+            ], timeout_ms=4000)
+            if header is None:
+                return f"I opened a possible chat for '{receiver}', but couldn't verify its header. No message was sent."
+
+            header_text = (await header.inner_text(timeout=2000)).strip()
+            header_title = (await header.get_attribute("title")) or ""
+            verified_text = (header_title + " " + header_text).casefold()
+            if wanted not in verified_text:
+                return (
+                    f"The opened chat does not clearly match '{receiver}' "
+                    f"(header: '{header_text[:100]}'). No message was sent."
+                )
+
+            composer = await _first_visible([
+                page.get_by_role("textbox", name="Type a message"),
+                page.locator('footer [contenteditable="true"][role="textbox"]'),
+                page.locator('footer [contenteditable="true"]'),
+            ], timeout_ms=5000)
+            if composer is None:
+                return f"Chat with '{receiver}' is open, but the message box wasn't found. No message was sent."
+
+            await composer.click()
+            await composer.fill(message)
+
+            # Send using WhatsApp's Send button where available.
+            send_button = await _first_visible([
+                page.get_by_role("button", name="Send"),
+                page.locator('button[aria-label="Send"]'),
+                page.locator('[data-testid="send"]'),
+            ], timeout_ms=2500)
+            if send_button is not None:
+                await send_button.click()
+            else:
+                await composer.press("Enter")
+
+            # Confirm the exact message appears in the conversation.
+            try:
+                await page.get_by_text(message, exact=True).last.wait_for(state="visible", timeout=10000)
+            except Exception:
+                return (
+                    f"The send action was triggered for '{receiver}', but I couldn't "
+                    "confirm the message in the conversation. Please check WhatsApp."
+                )
+            return f"WhatsApp message sent and visible in the chat with {receiver}."
+        finally:
+            # Keep the persistent Chrome window open for the user. Do not close
+            # the context because that would close the browser window.
 
 
 def _whatsapp_web(receiver: str, message: str, attachment_path: str | None = None) -> str:
-    """
-    Send a WhatsApp message through the user's existing Chrome.
-
-    This version intentionally does NOT use Playwright/CDP because that
-    would require Chrome to be started with a special debugging profile.
-    """
-
+    if attachment_path:
+        return "WhatsApp file attachments are not handled by this verified text-message flow yet. No message was sent."
     with _WA_LOCK:
         try:
-            ok, state = _open_or_reuse_whatsapp()
-
-            if not ok:
-                return state
-
-            if not _wait_for_whatsapp():
-                return (
-                    "WhatsApp Web did not become ready. "
-                    "Chrome has been left open."
-                )
-
-            # Search and open recipient.
-            try:
-                _search_contact_and_open(receiver)
-            except Exception as exc:
-                return (
-                    f"WhatsApp opened, but I could not select "
-                    f"{receiver}: {exc}"
-                )
-
-            # Send exact message.
-            try:
-                _send_text(message)
-            except Exception as exc:
-                return (
-                    f"WhatsApp opened {receiver}, "
-                    f"but the message could not be sent: {exc}"
-                )
-
-            # Handle optional attachment
-            attach_note = ""
-            if attachment_path:
-                att_p = Path(attachment_path)
-                if att_p.exists():
-                    try:
-                        # If image, copy to clipboard and paste
-                        if att_p.suffix.lower() in (".png", ".jpg", ".jpeg", ".bmp", ".gif"):
-                            import pyautogui
-                            from PIL import Image
-                            import io
-                            import win32clipboard
-                            img = Image.open(att_p)
-                            output = io.BytesIO()
-                            img.convert("RGB").save(output, "BMP")
-                            data = output.getvalue()[14:]
-                            output.close()
-                            win32clipboard.OpenClipboard()
-                            win32clipboard.EmptyClipboard()
-                            win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
-                            win32clipboard.CloseClipboard()
-                            time.sleep(0.5)
-                            pyautogui.hotkey("ctrl", "v")
-                            time.sleep(1.5)
-                            pyautogui.press("enter")
-                            time.sleep(1.0)
-                            attach_note = f" with image '{att_p.name}' attached."
-                        else:
-                            attach_note = f" (File '{att_p.name}' located at {attachment_path}; ready to attach)."
-                    except Exception as exc:
-                        attach_note = f" (Attachment notice: could not auto-paste '{att_p.name}': {exc})."
-                else:
-                    attach_note = f" (Attachment '{attachment_path}' was not found)."
-
-            # Leave Chrome open.
-            return (
-                f"Message sent to {receiver} through your "
-                f"current Chrome WhatsApp Web session{attach_note}"
-            )
-
+            return asyncio.run(_whatsapp_flow(receiver, message))
         except Exception as exc:
-            return f"WhatsApp Web action failed: {exc}"
+            return f"WhatsApp Web could not complete the task: {exc}"
 
 
 def _desktop_send(app_name: str, receiver: str, message: str) -> str:
     """Fallback for non-WhatsApp desktop messaging apps."""
-
     try:
         import pyautogui
         import pyperclip
-
         pyautogui.press("win")
-        time.sleep(0.5)
-
         pyperclip.copy(app_name)
         pyautogui.hotkey("ctrl", "v")
         pyautogui.press("enter")
-
-        time.sleep(2.5)
-
+        pyautogui.sleep(2.5)
         pyautogui.hotkey("ctrl", "f")
-        time.sleep(0.4)
-
         pyperclip.copy(receiver)
         pyautogui.hotkey("ctrl", "v")
         pyautogui.press("enter")
-
-        time.sleep(0.8)
-
+        pyautogui.sleep(0.8)
         pyperclip.copy(message)
         pyautogui.hotkey("ctrl", "v")
         pyautogui.press("enter")
-
-        time.sleep(0.5)
-
-        return f"Message sent to {receiver} via {app_name}."
-
+        return f"Message send action completed for {receiver} via {app_name}."
     except Exception as exc:
         return f"Could not send via {app_name}: {exc}"
 
 
 def send_message(parameters: dict, player=None, **kwargs) -> str:
     p = parameters or {}
-
-    receiver = str(
-        p.get("receiver", "")
-    ).strip()
-
-    message = str(
-        p.get("message_text", "")
-    ).strip()
-
-    platform = str(
-        p.get("platform", "whatsapp")
-    ).strip().lower()
-
+    receiver = str(p.get("receiver", "")).strip()
+    message = str(p.get("message_text", "")).strip()
+    platform = str(p.get("platform", "whatsapp")).strip().lower()
     attachment_path = str(p.get("attachment_path", "")).strip() or None
 
     if not receiver:
         return "Please specify a recipient."
-
     if not message and not attachment_path:
         return "Please specify the message content."
 
-    if platform in (
-        "whatsapp",
-        "whatsapp web",
-        "wp",
-        "wapp",
-    ):
-        result = _whatsapp_web(
-            receiver,
-            message or "Here is the attachment.",
-            attachment_path=attachment_path,
-        )
+    if platform in ("whatsapp", "whatsapp web", "wp", "wapp"):
+        result = _whatsapp_web(receiver, message, attachment_path)
     else:
-        result = _desktop_send(
-            platform.title(),
-            receiver,
-            message,
-        )
+        result = _desktop_send(platform.title(), receiver, message)
 
     if player and hasattr(player, "write_log"):
-        player.write_log(
-            "[message] " + result
-        )
-
+        player.write_log("[message] " + result)
     return result
 
 
 TOOL = {
     "name": "send_message",
-
     "description": (
-        "Actually send a text message through WhatsApp Web "
-        "using the user's existing Chrome window. "
-        "Never launch another Chrome browser or create another "
-        "Chrome profile. If WhatsApp Web is already the current "
-        "tab, reuse it. Otherwise open WhatsApp Web in a new tab "
-        "inside the same Chrome window. Search the requested "
-        "contact, send the exact message, and leave Chrome open. "
-        "Supports optional attachment_path."
+        "Send WhatsApp text messages using NOVA's persistent Chrome profile. "
+        "Open WhatsApp Web if needed, wait for QR login, search for the exact "
+        "contact, verify the chat header, then send and confirm the message. "
+        "If the recipient cannot be verified, do not send. Supports message_text "
+        "and receiver. Attachments are not supported by this verified flow."
     ),
-
     "parameters": {
         "type": "OBJECT",
-
         "properties": {
-            "receiver": {
-                "type": "STRING",
-                "description": "Recipient contact name",
-            },
-
-            "message_text": {
-                "type": "STRING",
-                "description": "Exact message text to send",
-            },
-
-            "platform": {
-                "type": "STRING",
-                "description": "whatsapp | whatsapp web",
-            },
-
-            "attachment_path": {
-                "type": "STRING",
-                "description": "Optional file path to attach",
-            },
+            "receiver": {"type": "STRING", "description": "Exact WhatsApp contact name or number"},
+            "message_text": {"type": "STRING", "description": "Exact message text to send"},
+            "platform": {"type": "STRING", "description": "whatsapp | whatsapp web"},
+            "attachment_path": {"type": "STRING", "description": "Optional attachment path (not supported by this flow)"},
         },
-
-        "required": [
-            "receiver",
-            "message_text",
-        ],
+        "required": ["receiver", "message_text"],
     },
-
     "handler": send_message,
 }
