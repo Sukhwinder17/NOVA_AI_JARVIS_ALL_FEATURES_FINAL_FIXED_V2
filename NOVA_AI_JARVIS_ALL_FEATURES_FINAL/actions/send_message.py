@@ -22,53 +22,99 @@ async def _first_visible(locators, timeout_ms: int = 2500):
 
 
 async def _whatsapp_flow(receiver: str, message: str) -> str:
-    """Use a persistent Chrome profile and WhatsApp Web's accessible DOM."""
+    """Attach to a NOVA-controlled Chrome via CDP and use a new WhatsApp tab."""
+    import os
+    import subprocess
+    import time
+    import urllib.error
+    import urllib.request
+
     from playwright.async_api import async_playwright
 
-    configured_profile = Path(config.NOVA_BROWSER_PROFILE).expanduser()
-    # The default config used to create a separate NOVA profile, which caused
-    # WhatsApp to show a second QR login even when the user's normal Chrome was
-    # already authenticated. When that default is in use, reuse Chrome's
-    # standard Windows user-data directory and its Default profile instead.
+    debug_port = int(os.getenv("NOVA_CHROME_DEBUG_PORT", "9222"))
+    debug_url = f"http://127.0.0.1:{debug_port}"
+    profile = Path(config.NOVA_BROWSER_PROFILE).expanduser()
     automation_profile = (Path(config.BASE_DIR) / "data" / "browser_profile").resolve()
     chrome_user_data = (
-        Path(__import__("os").environ.get("LOCALAPPDATA", ""))
+        Path(os.environ.get("LOCALAPPDATA", ""))
         / "Google" / "Chrome" / "User Data"
     )
-    use_default_chrome_profile = (
-        configured_profile.resolve() == automation_profile
-        and chrome_user_data.exists()
-    )
-    if use_default_chrome_profile:
+    if profile.resolve() == automation_profile and chrome_user_data.exists():
         profile = chrome_user_data
-        profile_args = ["--profile-directory=Default"]
-    else:
-        profile = configured_profile
-        profile.mkdir(parents=True, exist_ok=True)
-        profile_args = []
+    profile.mkdir(parents=True, exist_ok=True)
+
+    def cdp_ready() -> bool:
+        try:
+            with urllib.request.urlopen(debug_url + "/json/version", timeout=1.5) as response:
+                return response.status == 200
+        except Exception:
+            return False
+
+    def chrome_running() -> bool:
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq chrome.exe"],
+                capture_output=True, text=True, timeout=5
+            )
+            return "chrome.exe" in result.stdout.lower()
+        except Exception:
+            return False
 
     async with async_playwright() as playwright:
-        # Reuse the normal Chrome profile by default so the existing WhatsApp
-        # Web session is available to NOVA. Chrome must be closed first to
-        # release the profile lock; never copy or concurrently open its files.
-        context = await playwright.chromium.launch_persistent_context(
-            user_data_dir=str(profile),
-            channel="chrome",
-            headless=False,
-            no_viewport=True,
-            args=["--start-maximized", "--disable-notifications", *profile_args],
-        )
-        try:
-            pages = context.pages
-            page = pages[0] if pages else await context.new_page()
-            whatsapp_pages = [p for p in pages if "web.whatsapp.com" in p.url]
-            if whatsapp_pages:
-                page = whatsapp_pages[0]
-            else:
-                await page.goto(config.WHATSAPP_URL, wait_until="domcontentloaded", timeout=60000)
+        if not cdp_ready():
+            # A regular Chrome instance cannot be remotely automated unless it
+            # was started with a debugging port. Do not try to open the same
+            # locked profile through launch_persistent_context (that causes the
+            # "Opening in existing browser session" error).
+            if chrome_running():
+                return (
+                    "Chrome is already open, but it was not started with NOVA's "
+                    "remote-debugging port. Close every Chrome window and make "
+                    "sure chrome.exe exits, then retry. NOVA will reopen your "
+                    "same Chrome profile with remote debugging enabled. "
+                    "Your existing WhatsApp login will be retained."
+                )
 
-            # Detect login using WhatsApp's actual page UI, not a fixed sleep.
+            chrome_exe = Path(os.environ.get("PROGRAMFILES", r"C:\\Program Files")) / "Google" / "Chrome" / "Application" / "chrome.exe"
+            if not chrome_exe.exists():
+                chrome_exe = Path(os.environ.get("PROGRAMFILES(X86)", r"C:\\Program Files (x86)")) / "Google" / "Chrome" / "Application" / "chrome.exe"
+            if not chrome_exe.exists():
+                return "Google Chrome executable was not found. Install Chrome or set its path for NOVA."
+
+            args = [
+                str(chrome_exe),
+                f"--remote-debugging-port={debug_port}",
+                f"--user-data-dir={profile}",
+                "--profile-directory=Default",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--start-maximized",
+                config.WHATSAPP_URL,
+            ]
+            subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            deadline = asyncio.get_running_loop().time() + 25
+            while asyncio.get_running_loop().time() < deadline and not cdp_ready():
+                await asyncio.sleep(0.5)
+            if not cdp_ready():
+                return (
+                    "Chrome started, but its remote-debugging endpoint did not become ready. "
+                    "Close Chrome and retry; no WhatsApp message was sent."
+                )
+
+        browser = await playwright.chromium.connect_over_cdp(debug_url)
+        contexts = browser.contexts
+        if not contexts:
+            return "NOVA connected to Chrome, but no browser context was available. No message was sent."
+        context = contexts[0]
+
+        # Always create a new tab in the same Chrome window/session rather than
+        # launching another Chrome process or stealing an unrelated tab.
+        page = await context.new_page()
+        try:
+            await page.goto(config.WHATSAPP_URL, wait_until="domcontentloaded", timeout=60000)
+
             deadline = asyncio.get_running_loop().time() + 180
+            search = None
             while asyncio.get_running_loop().time() < deadline:
                 try:
                     current_url = page.url.lower()
@@ -81,37 +127,30 @@ async def _whatsapp_flow(receiver: str, message: str) -> str:
                     await page.goto(config.WHATSAPP_URL, wait_until="domcontentloaded", timeout=60000)
                     continue
 
-                login_visible = (
-                    "scan the qr code" in body
-                    or "link with phone number" in body
-                    or await page.locator('canvas[aria-label*="Scan"], [data-ref]').count() > 0
-                )
                 search = await _first_visible([
                     page.get_by_role("textbox", name="Search or start a new chat"),
                     page.locator('div[contenteditable="true"][data-tab="3"]'),
                     page.locator('div[contenteditable="true"][role="textbox"]'),
                     page.locator('input[placeholder*="Search"]'),
                 ], timeout_ms=1000)
-
                 if search is not None:
                     break
-                if login_visible:
+
+                if "scan the qr code" in body or "link with phone number" in body:
                     await asyncio.sleep(2)
                     continue
                 await asyncio.sleep(2)
             else:
                 return (
-                    "WhatsApp Web is still not logged in or its chat list did not load. "
-                    "Scan the QR code in the NOVA Chrome window, then ask me to send again."
+                    "WhatsApp Web is not logged in on the Chrome profile NOVA opened. "
+                    "Scan the QR code in this new tab once, wait for chats to load, "
+                    "then repeat your command. No message was sent."
                 )
 
-            # Search by the exact contact name/number.
             await search.click()
             await search.fill(receiver)
             await asyncio.sleep(1.5)
 
-            # Find an exact visible result; do not press Enter on an arbitrary
-            # first result. WhatsApp's result rows commonly expose title/text.
             result = None
             candidates = page.locator('[role="listitem"], [data-testid*="cell-frame"], [role="option"]')
             try:
@@ -134,30 +173,10 @@ async def _whatsapp_flow(receiver: str, message: str) -> str:
                     continue
 
             if result is None:
-                # Some WhatsApp versions render search hits as buttons.
-                buttons = page.get_by_role("button")
-                try:
-                    count = await buttons.count()
-                except Exception:
-                    count = 0
-                for index in range(min(count, 60)):
-                    candidate = buttons.nth(index)
-                    try:
-                        if await candidate.is_visible():
-                            label = (await candidate.inner_text(timeout=700)).strip()
-                            if label.splitlines() and label.splitlines()[0].strip().casefold() == wanted:
-                                result = candidate
-                                break
-                    except Exception:
-                        continue
-
-            if result is None:
                 return f"I couldn't find an exact WhatsApp contact match for '{receiver}'. No message was sent."
 
             await result.click()
             await asyncio.sleep(1)
-
-            # Verify the chat header before sending.
             header = await _first_visible([
                 page.locator('header [title]'),
                 page.locator('header [dir="auto"]'),
@@ -168,8 +187,7 @@ async def _whatsapp_flow(receiver: str, message: str) -> str:
 
             header_text = (await header.inner_text(timeout=2000)).strip()
             header_title = (await header.get_attribute("title")) or ""
-            verified_text = (header_title + " " + header_text).casefold()
-            if wanted not in verified_text:
+            if wanted not in (header_title + " " + header_text).casefold():
                 return (
                     f"The opened chat does not clearly match '{receiver}' "
                     f"(header: '{header_text[:100]}'). No message was sent."
@@ -185,8 +203,6 @@ async def _whatsapp_flow(receiver: str, message: str) -> str:
 
             await composer.click()
             await composer.fill(message)
-
-            # Send using WhatsApp's Send button where available.
             send_button = await _first_visible([
                 page.get_by_role("button", name="Send"),
                 page.locator('button[aria-label="Send"]'),
@@ -197,7 +213,6 @@ async def _whatsapp_flow(receiver: str, message: str) -> str:
             else:
                 await composer.press("Enter")
 
-            # Confirm the exact message appears in the conversation.
             try:
                 await page.get_by_text(message, exact=True).last.wait_for(state="visible", timeout=10000)
             except Exception:
@@ -207,9 +222,7 @@ async def _whatsapp_flow(receiver: str, message: str) -> str:
                 )
             return f"WhatsApp message sent and visible in the chat with {receiver}."
         finally:
-            # The persistent context is intentionally left to Playwright's
-            # lifecycle management; this finally block is retained for cleanup
-            # hooks if the browser flow is extended later.
+            # Keep the Chrome window and its tabs open for the user.
             pass
 
 
