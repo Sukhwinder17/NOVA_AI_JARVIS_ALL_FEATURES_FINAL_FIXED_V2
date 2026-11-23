@@ -44,17 +44,46 @@ class NovaOrchestrator:
             self.ui.write_log(msg)
 
     def _run(self, name, args):
-        return self.registry.run(
-            name,
-            args,
-            {
-                "player": self.ui,
-                "speak": getattr(self.ui, "speak_text", None),
-                "response": None,
-                "session_memory": load_memory(),
-                "task_manager": self.task_manager,
-            },
-        )
+        ctx = {
+            "player": self.ui,
+            "speak": getattr(self.ui, "speak_text", None),
+            "response": None,
+            "session_memory": load_memory(),
+            "task_manager": self.task_manager,
+        }
+
+        # Critical-action recovery: WhatsApp sending must remain callable even
+        # if startup discovery skipped its module. Load the exact bundled file
+        # lazily and report the real import/validation error instead of the
+        # misleading generic "Action is not available" message.
+        if name == "send_message" and not self.registry.has(name):
+            try:
+                import importlib.util
+                action_path = config.BASE_DIR / "actions" / "send_message.py"
+                spec = importlib.util.spec_from_file_location(
+                    "_nova_send_message_recovery", action_path
+                )
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"Cannot load action file: {action_path}")
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                tool = getattr(module, "TOOL", None)
+                if not isinstance(tool, dict) or tool.get("name") != "send_message":
+                    raise ValueError("send_message.py does not expose the expected TOOL declaration")
+                handler = tool.get("handler")
+                if not callable(handler):
+                    raise ValueError("send_message TOOL handler is not callable")
+                self._log("Recovered send_message action through lazy loading.")
+                return handler(parameters=args, **{
+                    key: value for key, value in ctx.items()
+                    if key in __import__("inspect").signature(handler).parameters
+                    or any(p.kind == p.VAR_KEYWORD for p in __import__("inspect").signature(handler).parameters.values())
+                })
+            except Exception as exc:
+                self._log(f"send_message lazy-load failed: {type(exc).__name__}: {exc}")
+                return f"WhatsApp action could not load: {type(exc).__name__}: {exc}"
+
+        return self.registry.run(name, args, ctx)
 
     @staticmethod
     def _extract_file_search_query(text: str) -> str:
@@ -503,6 +532,26 @@ class NovaOrchestrator:
             else:
                 folder = "desktop"
             return self._run("file_controller", {"action": "list", "path": folder})
+
+        # WhatsApp commands are deterministic local actions. Route them
+        # before the LLM planner so a missing tool declaration cannot prevent
+        # the command from reaching the bundled send_message handler.
+        whatsapp_patterns = [
+            r"^send\\s+(?:a\\s+)?whatsapp\\s+message\\s+to\\s+(.+?)\\s+saying\\s+(.+)$",
+            r"^send\\s+whatsapp\\s+to\\s+(.+?)\\s+(?:saying|say)\\s+(.+)$",
+            r"^whatsapp\\s+(?:message\\s+)?to\\s+(.+?)\\s+(?:saying|say)\\s+(.+)$",
+        ]
+        for pattern in whatsapp_patterns:
+            match = re.match(pattern, t, re.I | re.S)
+            if match:
+                receiver = match.group(1).strip(" \\"'")
+                message_text = match.group(2).strip(" \\"'")
+                if receiver and message_text:
+                    return self._run("send_message", {
+                        "receiver": receiver,
+                        "message_text": message_text,
+                        "platform": "whatsapp",
+                    })
 
         # Natural Language Task Planning & Orchestration layer
         # Handle PC file searches before the task planner.
