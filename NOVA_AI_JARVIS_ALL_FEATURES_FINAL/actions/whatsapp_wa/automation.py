@@ -8,7 +8,7 @@ def _log(message_id,event_type,detail):
  with connect() as db: db.execute("INSERT INTO automation_events(wa_message_id,event_type,detail) VALUES(?,?,?)",(message_id,event_type,detail[:500]))
 def should_auto_reply(text,confidence,allowed=False):
  if os.getenv("NOVA_WA_AUTOMATION_ENABLED","false").lower() not in {"1","true","yes"}: return False,"Automation is disabled."
- if not allowed: return False,"Sender is not allowlisted."
+ if not allowed: return False,"Sender is not allowlisted."\n if not str(reply_text if False else text).strip(): return False,"Empty incoming message."
  if confidence<float(os.getenv("NOVA_WA_MIN_CONFIDENCE","0.82")): return False,"Confidence below threshold."
  if _BLOCKED.search(text or "") or _PAYMENT.search(text or ""): return False,"Sensitive or financial topic requires human review."
  return True,"Eligible for automatic reply."
