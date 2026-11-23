@@ -1,4 +1,4 @@
-const API = "http://127.0.0.1:8765";
+const API = "http://127.0.0.1:8766";
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function postResult(id, result) {
