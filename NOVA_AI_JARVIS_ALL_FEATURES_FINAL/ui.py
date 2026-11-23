@@ -904,7 +904,7 @@ class NovaWindow(QMainWindow):
         self.add_message("YOU", text)
         low = text.lower().strip()
 
-        if low in ("/whatsapp setup", "/whatsapp unlock", "/whatsapp lock", "/whatsapp token"):
+        if low in ("/whatsapp setup", "/whatsapp unlock", "/whatsapp lock", "/whatsapp token", "/whatsapp verify-token"):
             try:
                 from actions import whatsapp_security as ws
                 if low == "/whatsapp setup":
@@ -933,6 +933,13 @@ class NovaWindow(QMainWindow):
                 elif low == "/whatsapp lock":
                     ws.lock()
                     self.add_message("NOVA", "WhatsApp locked.")
+                elif low == "/whatsapp verify-token":
+                    ws.require_unlocked()
+                    saved_token = ws.get_token()
+                    if saved_token:
+                        self.add_message("NOVA", "Token decryption test PASSED. The token was not displayed.")
+                    else:
+                        self.add_message("NOVA", "Token decryption test FAILED: saved token is empty.")
                 else:
                     ws.require_unlocked()
                     token, ok = QInputDialog.getText(self, "Save WPPConnect Token", "Paste the session token. It will be encrypted with Windows DPAPI:", QLineEdit.EchoMode.Password)
