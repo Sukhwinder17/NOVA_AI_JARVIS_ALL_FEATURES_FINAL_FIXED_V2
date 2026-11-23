@@ -16,7 +16,7 @@ BASE = Path(__file__).resolve().parent.parent
 DB = BASE / "data" / "whatsapp" / "scheduled.sqlite3"
 API = os.getenv("NOVA_WPP_API_URL", "http://127.0.0.1:21465").rstrip("/")
 SESSION = os.getenv("NOVA_WPP_SESSION", "nova")
-TOKEN = os.getenv("NOVA_WPP_TOKEN", "").strip()
+
 _TIMEOUT = 35
 _worker_started = False
 _worker_lock = threading.Lock()
@@ -39,7 +39,7 @@ def _request(method: str, endpoint: str, *, json=None, params=None):
     if not TOKEN:
         raise RuntimeError("WPPConnect is not configured. Set NOVA_WPP_TOKEN in .env after pairing.")
     url = f"{API}/api/{quote(SESSION, safe='')}/{endpoint.lstrip('/')}"
-    response = requests.request(method, url, headers={"Authorization": f"Bearer {TOKEN}"}, json=json, params=params, timeout=_TIMEOUT)
+    response = requests.request(method, url, headers={"Authorization": f"Bearer {token}"}, json=json, params=params, timeout=_TIMEOUT)
     if not response.ok:
         raise RuntimeError(f"WPPConnect HTTP {response.status_code}: {response.text[:500]}")
     try:
