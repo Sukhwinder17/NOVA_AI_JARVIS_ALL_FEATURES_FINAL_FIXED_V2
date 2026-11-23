@@ -36,8 +36,8 @@ def _db():
 
 
 def _request(method: str, endpoint: str, *, json=None, params=None):
-    if not TOKEN:
-        raise RuntimeError("WPPConnect is not configured. Set NOVA_WPP_TOKEN in .env after pairing.")
+    from actions import whatsapp_security
+    token = whatsapp_security.get_token()
     url = f"{API}/api/{quote(SESSION, safe='')}/{endpoint.lstrip('/')}"
     response = requests.request(method, url, headers={"Authorization": f"Bearer {token}"}, json=json, params=params, timeout=_TIMEOUT)
     if not response.ok:
@@ -123,12 +123,12 @@ def whatsapp_manager(parameters: dict, player=None, **kwargs) -> str:
     p = parameters or {}
     action = str(p.get("action", "status")).lower().strip()
     try:
+        from actions import whatsapp_security
+        whatsapp_security.require_unlocked()
         if action == "status":
             health = requests.get(f"{API}/healthz", timeout=5)
             if not health.ok:
                 return f"WPPConnect server returned HTTP {health.status_code}."
-            if not TOKEN:
-                return "WPPConnect server is online, but NOVA_WPP_TOKEN is missing. Pair a session in Manager and add its session token to .env."
             return f"WPPConnect session status: {_request('GET', 'status-session')}"
 
         if action == "send":
