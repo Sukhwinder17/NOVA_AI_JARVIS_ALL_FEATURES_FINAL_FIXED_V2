@@ -8,7 +8,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 _BRIDGE_HOST = "127.0.0.1"
-_BRIDGE_PORT = 8765
+_BRIDGE_PORT = 8766
 _PENDING = queue.Queue()
 _WAITING: dict[str, tuple[threading.Event, dict]] = {}
 _WAITING_LOCK = threading.Lock()
@@ -29,7 +29,8 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
-        self.wfile.write(raw)
+        if status != 204:
+            self.wfile.write(raw)
 
     def do_OPTIONS(self):
         self._json(204, {})
@@ -87,7 +88,7 @@ def _ensure_bridge():
 
 def _whatsapp_web(receiver: str, message: str) -> str:
     if not _ensure_bridge():
-        return "NOVA's local WhatsApp bridge could not start on 127.0.0.1:8765. Check whether another app is using that port. No message was sent."
+        return "NOVA's local WhatsApp bridge could not start on 127.0.0.1:8766. Check whether another app is using that port. No message was sent."
 
     request_id = uuid.uuid4().hex
     event = threading.Event()
