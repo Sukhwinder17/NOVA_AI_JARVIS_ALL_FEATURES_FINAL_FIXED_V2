@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QDialog,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QTabWidget,
-    QWidget,QFileDialog,QPlainTextEdit,QLineEdit,QListWidget,QMessageBox,QFormLayout,QGroupBox)
+    QWidget,QFileDialog,QPlainTextEdit,QLineEdit,QListWidget,QMessageBox,QFormLayout,QGroupBox,QComboBox)
 
 from actions.whatsapp_wa.importer import import_txt, import_text
 from actions.whatsapp_wa.store import overview, search_messages
@@ -82,22 +82,112 @@ class NovaWADialog(QDialog):
         self.tabs.addTab(page,"Life Memory")
 
     def _build_modules(self):
+        from PyQt6.QtWidgets import QSplitter
+        self.module_lists={}
         specs=[
-          ("Smart Inbox","Prioritisation will use imported-message timestamps and detected unanswered requests. Live sync is not available for personal imports."),
-          ("Scam Detector","First-pass local indicators are available after analysis. Findings are warnings, not definitive fraud determinations."),
-          ("Action Engine","Tasks extracted from imported messages require user review before approval or scheduling."),
-          ("Language Bridge","Translation and multilingual reply drafting will connect to NOVA's existing AI provider layer in the next integration step."),
-          ("Relationship Intelligence","Promise and preference records will be source-linked and user-correctable."),
-          ("Communication Analytics","Metrics will be calculated only from imported data and clearly labelled with the import date."),
-          ("Automation Studio","Separate WhatsApp Business Cloud API only. Personal WhatsApp automatic sending is intentionally unsupported.")
+          ("Smart Inbox","smart_inbox","Latest imported messages and items that may need attention."),
+          ("Scam Detector","scams","Local risk indicators. These are warnings, not definitive fraud verdicts."),
+          ("Action Engine","tasks","Suggested tasks extracted from messages; approve only after review."),
+          ("Relationship Intelligence","relationships","Source-linked possible promises and commitments."),
+          ("Communication Analytics","analytics","Metrics calculated from imported data only."),
+          ("Automation Studio","automation","Official WhatsApp Business API channel; personal WhatsApp is never automated."),
+          ("Daily Briefing","briefing","A compact summary of outstanding items in the imported dataset.")
         ]
-        for name,description in specs:
+        for label,key,description in specs:
             page=QWidget(); box=QVBoxLayout(page)
-            heading=QLabel(name.upper()); heading.setStyleSheet("font-size:15px;font-weight:800;color:#68eaff;")
+            heading=QLabel(label.upper()); heading.setStyleSheet("font-size:15px;font-weight:800;color:#68eaff;")
             box.addWidget(heading)
-            text=QLabel(description); text.setWordWrap(True); text.setObjectName("muted"); box.addWidget(text)
-            box.addStretch()
-            self.tabs.addTab(page,name)
+            note=QLabel(description); note.setWordWrap(True); note.setObjectName("muted"); box.addWidget(note)
+            listing=QListWidget(); box.addWidget(listing,1); self.module_lists[key]=listing
+            row=QHBoxLayout()
+            refresh=QPushButton("Refresh"); refresh.clicked.connect(lambda checked=False,k=key:self.refresh_module(k))
+            row.addWidget(refresh)
+            if key=="tasks":
+                approve=QPushButton("Approve selected task")
+                approve.clicked.connect(self.approve_selected_task); row.addWidget(approve)
+            box.addLayout(row)
+            self.tabs.addTab(page,label)
+        # Language Bridge is interactive and uses the existing NOVA provider configuration.
+        page=QWidget(); box=QVBoxLayout(page)
+        heading=QLabel("LANGUAGE BRIDGE"); heading.setStyleSheet("font-size:15px;font-weight:800;color:#68eaff;")
+        box.addWidget(heading)
+        self.language_input=QPlainTextEdit(); self.language_input.setPlaceholderText("Paste a message in Punjabi, Hindi, English or Hinglish…"); box.addWidget(self.language_input,1)
+        row=QHBoxLayout(); self.language_target=QComboBox(); self.language_target.addItems(["English","Hindi","Punjabi","Roman Punjabi"])
+        row.addWidget(self.language_target)
+        translate=QPushButton("Translate with NOVA AI"); translate.clicked.connect(self.translate_text); row.addWidget(translate); box.addLayout(row)
+        self.language_output=QPlainTextEdit(); self.language_output.setReadOnly(True); self.language_output.setPlaceholderText("Translation appears here…"); box.addWidget(self.language_output,1)
+        self.tabs.addTab(page,"Language Bridge")
+        self.refresh_all_modules()
+
+    def refresh_all_modules(self):
+        for key in self.module_lists: self.refresh_module(key)
+
+    def refresh_module(self,key):
+        listing=self.module_lists.get(key)
+        if listing is None: return
+        listing.clear()
+        try:
+            from actions.whatsapp_wa.store import connect
+            with connect() as db:
+                if key=="smart_inbox":
+                    rows=db.execute("SELECT m.id,m.timestamp,m.sender,m.text,c.title FROM messages m JOIN conversations c ON c.id=m.conversation_id ORDER BY m.id DESC LIMIT 150").fetchall()
+                    for x in rows:
+                        flag="  •  NEEDS ATTENTION" if "?" in (x["text"] or "") or any(w in (x["text"] or "").lower() for w in ("urgent","please send","deadline","call me")) else ""
+                        listing.addItem(f"#{x['id']}  {x['timestamp'] or 'date unknown'}  |  {x['title']} / {x['sender']}{flag}\n{x['text'][:450]}")
+                elif key=="scams":
+                    rows=db.execute("SELECT r.level,r.explanation,r.indicators,m.sender,m.text,m.timestamp FROM risk_findings r JOIN messages m ON m.id=r.source_message_id ORDER BY r.id DESC LIMIT 150").fetchall()
+                    for x in rows: listing.addItem(f"{x['level'].upper()} • {x['sender']} • {x['timestamp'] or 'date unknown'}\n{x['explanation']}\n{x['text'][:350]}")
+                elif key=="tasks":
+                    rows=db.execute("SELECT t.id,t.title,t.status,m.sender,m.text FROM tasks t JOIN messages m ON m.id=t.source_message_id ORDER BY t.id DESC LIMIT 150").fetchall()
+                    for x in rows: listing.addItem(f"Task #{x['id']} [{x['status']}] {x['title']}\nSource: {x['sender']} — {x['text'][:300]}")
+                elif key=="relationships":
+                    rows=db.execute("SELECT c.description,c.direction,c.status,m.sender,m.timestamp FROM commitments c JOIN messages m ON m.id=c.source_message_id ORDER BY c.id DESC LIMIT 150").fetchall()
+                    for x in rows: listing.addItem(f"{x['direction'].upper()} • {x['status']} • {x['sender']} • {x['timestamp'] or 'date unknown'}\n{x['description']}")
+                elif key=="analytics":
+                    vals={"Imported messages":db.execute("SELECT COUNT(*) FROM messages").fetchone()[0],"Conversations":db.execute("SELECT COUNT(*) FROM conversations").fetchone()[0],"Contacts":db.execute("SELECT COUNT(*) FROM contacts").fetchone()[0],"Suggested tasks":db.execute("SELECT COUNT(*) FROM tasks WHERE status='suggested'").fetchone()[0],"Open commitments":db.execute("SELECT COUNT(*) FROM commitments WHERE status='open'").fetchone()[0],"Risk indicators":db.execute("SELECT COUNT(*) FROM risk_findings").fetchone()[0]}
+                    for k,v in vals.items(): listing.addItem(f"{k}: {v}")
+                elif key=="automation":
+                    import os
+                    listing.addItem("Channel: Separate WhatsApp Business Cloud API")
+                    listing.addItem("Automation enabled: "+os.getenv("NOVA_WA_AUTOMATION_ENABLED","false"))
+                    listing.addItem("Allowlisted senders configured: "+str(len([x for x in os.getenv("NOVA_WA_ALLOWED_SENDERS","").split(",") if x.strip()])))
+                    listing.addItem("Access token configured: "+("yes" if os.getenv("NOVA_WA_ACCESS_TOKEN") else "no"))
+                    listing.addItem("Phone Number ID configured: "+("yes" if os.getenv("NOVA_WA_PHONE_NUMBER_ID") else "no"))
+                    rows=db.execute("SELECT event_type,detail,created_at FROM automation_events ORDER BY id DESC LIMIT 100").fetchall()
+                    for x in rows: listing.addItem(f"{x['created_at']} • {x['event_type']}\n{x['detail']}")
+                    listing.addItem("Auto replies remain disabled until Meta webhook, sender allowlist, model and safety policy are configured and tested.")
+                elif key=="briefing":
+                    tasks=db.execute("SELECT COUNT(*) FROM tasks WHERE status='suggested'").fetchone()[0]
+                    commitments=db.execute("SELECT COUNT(*) FROM commitments WHERE status='open'").fetchone()[0]
+                    risks=db.execute("SELECT COUNT(*) FROM risk_findings").fetchone()[0]
+                    listing.addItem(f"Suggested tasks to review: {tasks}")
+                    listing.addItem(f"Possible open commitments: {commitments}")
+                    listing.addItem(f"Risk indicators to inspect: {risks}")
+                    rows=db.execute("SELECT m.sender,m.text,m.timestamp FROM messages m WHERE m.text LIKE '%?%' ORDER BY m.id DESC LIMIT 10").fetchall()
+                    for x in rows: listing.addItem(f"Potential unanswered question • {x['sender']} • {x['timestamp'] or 'date unknown'}\n{x['text'][:300]}")
+            if listing.count()==0: listing.addItem("No records yet. Import a WhatsApp chat and run analysis first.")
+        except Exception as exc:
+            listing.addItem(f"Could not load this view: {exc}")
+
+    def approve_selected_task(self):
+        item=self.module_lists["tasks"].currentItem()
+        if not item: return
+        import re
+        match=re.search(r"Task #(\\d+)",item.text())
+        if not match: return
+        try:
+            from actions.whatsapp_wa.intelligence import approve_task
+            if approve_task(int(match.group(1))):
+                QMessageBox.information(self,"NOVA WA","Task approved.")
+            self.refresh_module("tasks"); self.refresh_overview()
+        except Exception as exc: QMessageBox.warning(self,"NOVA WA",str(exc))
+
+    def translate_text(self):
+        try:
+            from actions.whatsapp_wa.language import translate
+            result=translate(self.language_input.toPlainText(),self.language_target.currentText())
+            self.language_output.setPlainText(result)
+        except Exception as exc: QMessageBox.warning(self,"Language Bridge",str(exc))
 
     def refresh_overview(self):
         data=overview()
