@@ -4,7 +4,7 @@ This extension lets NOVA work with the Chrome session that is already open. It d
 
 ## One-time setup
 
-1. Start NOVA once after pulling the update. The local bridge listens only on 127.0.0.1:8765.
+1. Start NOVA once after pulling the update. The local WhatsApp bridge listens only on 127.0.0.1:8766. The phone-notification service continues using 127.0.0.1:8765.
 2. In the Chrome window you normally use, open `chrome://extensions`.
 3. Turn on **Developer mode**.
 4. Click **Load unpacked** and select:
