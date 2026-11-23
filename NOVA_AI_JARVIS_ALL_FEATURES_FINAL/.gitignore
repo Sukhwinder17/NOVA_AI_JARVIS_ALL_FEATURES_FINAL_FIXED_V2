@@ -10,3 +10,6 @@ outputs/*
 config/google_credentials.json
 config/credentials.json
 credentials.json
+
+# WhatsApp linked-device session data (never commit)
+data/whatsapp/
