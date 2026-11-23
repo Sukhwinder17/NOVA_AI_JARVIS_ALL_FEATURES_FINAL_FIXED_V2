@@ -16,7 +16,7 @@ def generate_reply(sender: str, incoming_text: str):
     with connect() as db:
         rows=db.execute("SELECT text,direction FROM business_messages WHERE sender_wa_id=? ORDER BY id DESC LIMIT 8",(sender,)).fetchall()
         history=[{"direction":r["direction"],"text":r["text"][:1200]} for r in reversed(rows)]
-    prompt={"incoming_message":incoming_text[:3000],"recent_business_conversation":history}
+    prompt={"business_knowledge":__import__("os").getenv("NOVA_WA_BUSINESS_CONTEXT","").strip()[:8000],"incoming_message":incoming_text[:3000],"recent_business_conversation":history}
     providers=("gemini","groq","xkiro")
     errors=[]
     for provider in providers:
