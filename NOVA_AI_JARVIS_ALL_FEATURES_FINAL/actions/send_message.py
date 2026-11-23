@@ -188,8 +188,10 @@ async def _whatsapp_flow(receiver: str, message: str) -> str:
                 )
             return f"WhatsApp message sent and visible in the chat with {receiver}."
         finally:
-            # Keep the persistent Chrome window open for the user. Do not close
-            # the context because that would close the browser window.
+            # The persistent context is intentionally left to Playwright's
+            # lifecycle management; this finally block is retained for cleanup
+            # hooks if the browser flow is extended later.
+            pass
 
 
 def _whatsapp_web(receiver: str, message: str, attachment_path: str | None = None) -> str:
