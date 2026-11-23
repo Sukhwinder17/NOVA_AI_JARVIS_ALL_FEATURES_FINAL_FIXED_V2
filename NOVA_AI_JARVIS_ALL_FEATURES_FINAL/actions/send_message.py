@@ -33,14 +33,13 @@ async def _whatsapp_flow(receiver: str, message: str) -> str:
 
     debug_port = int(os.getenv("NOVA_CHROME_DEBUG_PORT", "9222"))
     debug_url = f"http://127.0.0.1:{debug_port}"
-    profile = Path(config.NOVA_BROWSER_PROFILE).expanduser()
-    automation_profile = (Path(config.BASE_DIR) / "data" / "browser_profile").resolve()
-    chrome_user_data = (
-        Path(os.environ.get("LOCALAPPDATA", ""))
-        / "Google" / "Chrome" / "User Data"
-    )
-    if profile.resolve() == automation_profile and chrome_user_data.exists():
-        profile = chrome_user_data
+
+    # Always use NOVA's dedicated Chrome profile. Never point an automation
+    # launch at Chrome's normal "User Data" directory: Windows/Chrome locks it
+    # while the user's everyday Chrome is running, and Chrome silently forwards
+    # launches to the existing process while ignoring the debugging flags.
+    # A separate profile allows NOVA to run alongside ordinary Chrome safely.
+    profile = Path(config.NOVA_BROWSER_PROFILE).expanduser().resolve()
     profile.mkdir(parents=True, exist_ok=True)
 
     def cdp_ready() -> bool:
@@ -50,31 +49,10 @@ async def _whatsapp_flow(receiver: str, message: str) -> str:
         except Exception:
             return False
 
-    def chrome_running() -> bool:
-        try:
-            result = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq chrome.exe"],
-                capture_output=True, text=True, timeout=5
-            )
-            return "chrome.exe" in result.stdout.lower()
-        except Exception:
-            return False
-
     async with async_playwright() as playwright:
         if not cdp_ready():
-            # A regular Chrome instance cannot be remotely automated unless it
-            # was started with a debugging port. Do not try to open the same
-            # locked profile through launch_persistent_context (that causes the
-            # "Opening in existing browser session" error).
-            if chrome_running():
-                return (
-                    "Chrome is already open, but it was not started with NOVA's "
-                    "remote-debugging port. Close every Chrome window and make "
-                    "sure chrome.exe exits, then retry. NOVA will reopen your "
-                    "same Chrome profile with remote debugging enabled. "
-                    "Your existing WhatsApp login will be retained."
-                )
-
+            # Start an isolated NOVA Chrome profile. The user's normal Chrome
+            # can remain open; this process does not reuse or lock its profile.
             chrome_exe = Path(os.environ.get("PROGRAMFILES", r"C:\\Program Files")) / "Google" / "Chrome" / "Application" / "chrome.exe"
             if not chrome_exe.exists():
                 chrome_exe = Path(os.environ.get("PROGRAMFILES(X86)", r"C:\\Program Files (x86)")) / "Google" / "Chrome" / "Application" / "chrome.exe"
@@ -92,13 +70,15 @@ async def _whatsapp_flow(receiver: str, message: str) -> str:
                 config.WHATSAPP_URL,
             ]
             subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            deadline = asyncio.get_running_loop().time() + 25
+            deadline = asyncio.get_running_loop().time() + 30
             while asyncio.get_running_loop().time() < deadline and not cdp_ready():
                 await asyncio.sleep(0.5)
             if not cdp_ready():
                 return (
-                    "Chrome started, but its remote-debugging endpoint did not become ready. "
-                    "Close Chrome and retry; no WhatsApp message was sent."
+                    "NOVA could not start its dedicated Chrome session. "
+                    "Check whether another app is using debugging port "
+                    f"{debug_port}, then retry. Your normal Chrome was not closed; "
+                    "no WhatsApp message was sent."
                 )
 
         browser = await playwright.chromium.connect_over_cdp(debug_url)
