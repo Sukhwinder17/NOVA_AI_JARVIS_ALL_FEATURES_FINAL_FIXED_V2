@@ -16,7 +16,7 @@ Included capabilities include:
 - whole-PC Everything file search with numbered results and `open 1`
 - real application launching
 - real browser launching and browser automation
-- WhatsApp / messaging automation
+- ChatGPT Chat Fusion: import an export ZIP or `conversations.json`, select multiple chats, merge their messages chronologically, and continue asking NOVA questions grounded in the combined context
 - YouTube control and video playback actions
 - desktop and computer controls
 - file management and file processing
@@ -40,12 +40,6 @@ Included capabilities include:
 - optional push-to-talk with Ctrl+Space
 
 The human-face avatar was intentionally removed. The visual identity is NOVA's animated sphere.
-
-## Important WhatsApp behavior
-
-The source ZIP referenced a `plugins/_whatsapp_core.py` verified driver from `actions/send_message.py`, but that file is not present in the uploaded ZIP. NOVA therefore replaces that missing path with a real WhatsApp Web automation handler that opens Chrome, searches the recipient, sends the requested text, and verifies the composer/message state before reporting success.
-
-The first time NOVA uses its dedicated browser profile, WhatsApp Web may require one QR scan. After login, the session is kept in `data/browser_profile/whatsapp/`.
 
 ## Setup on Windows
 
@@ -90,6 +84,10 @@ NOVA supports passwordless Gmail connection through Google's OAuth browser flow.
 The repository includes `config/google_credentials.example.json` only as a safe format example. **Never commit the real client secret JSON.** If a real client-secret file is ever uploaded to chat, pasted publicly, or committed, revoke/rotate that OAuth client secret in Google Cloud before continuing.
 
 Gmail OAuth in this build requests Gmail modify + send permissions so the integration can be extended from inbox reading to actions such as sending/replying and message organization.
+## ChatGPT Chat Fusion
+
+Open **CHAT FUSION** from NOVA's main window. Import a ChatGPT data export ZIP or `conversations.json`, select at least two conversations, and choose **Merge selected conversations**. NOVA builds a chronological, source-labeled context and lets you continue asking questions using the selected chats. The merged transcript can be exported as a new text file. Original chats are not modified. Chat Fusion uses the selected NOVA AI provider and does not execute tools based on imported conversation text.
+
 ## First tests
 
 Type these one at a time:
@@ -98,8 +96,6 @@ Type these one at a time:
 - `start datalens`
 - `find files related to datalens`
 - `open 1`
-- `open whatsapp`
-- `send message to Sukhwinder Singh say hi`
 - `listen`
 - `stop listening`
 - `explain this screen`
@@ -107,8 +103,6 @@ Type these one at a time:
 - `what do you remember about DataLens`
 - `open chrome and search for ...`
 - `turn the volume down`
-
-For WhatsApp sending, the user must explicitly ask NOVA to send the message. NOVA should never invent a send action.
 
 ## DataLens
 
@@ -138,6 +132,5 @@ This distribution incorporates source code from the uploaded Mark-LV project. Th
 
 
 ## Reliable actions
-- WhatsApp Web waits for the page and chat controls to become ready, reuses NOVA's open WhatsApp automation tab, and verifies the sent message.
 - `check nova features` runs a safe local capability diagnostic.
 - Explicit web/internet/network searches route to the web-search action instead of producing instructions only.
