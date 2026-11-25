@@ -243,7 +243,6 @@ class NovaOrchestrator:
 
         # High-priority explicit SMS scheduling syntax.
         # A numeric recipient means PHONE/SMSGate by default.
-        # WhatsApp is only selected when the command explicitly contains "WhatsApp".
         explicit_sms_date = re.match(
             r"""^(?:schedule\s+|send\s+)?(?:an?\s+)?(?:sms|text(?:\s+message)?)\s+to\s+"""
             r"""(?P<recipient>\+?\d{10,13})\s+(?:at\s+|on\s+)?"""
