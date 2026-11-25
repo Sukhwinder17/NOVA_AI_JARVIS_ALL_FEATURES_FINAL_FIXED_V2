@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from actions.whatsapp_wa import waha_client
+from actions.whatsapp_wa import waha_client, store
 
 
 class WahaClientTests(unittest.TestCase):
@@ -43,6 +43,22 @@ class WahaClientTests(unittest.TestCase):
             waha_client.send_text("", "hello")
         with self.assertRaises(ValueError):
             waha_client.send_text("919900000000@c.us", "")
+
+    def test_waha_history_sync_deduplicates_message_ids(self):
+        with tempfile.TemporaryDirectory() as temp:
+            db_path = Path(temp) / "nova.sqlite3"
+            messages = [
+                {"id": "msg-1", "timestamp": 1760000000, "from": "919900000000@c.us", "fromMe": False, "body": "hello"},
+                {"id": "msg-2", "timestamp": 1760000001, "from": "919900000000@c.us", "fromMe": True, "body": "reply"},
+            ]
+            with patch.object(store, "DB_PATH", db_path):
+                first = store.add_waha_history("nova", "919900000000@c.us", "Test Contact", messages)
+                second = store.add_waha_history("nova", "919900000000@c.us", "Test Contact", messages)
+                with store.connect() as db:
+                    count = db.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+            self.assertEqual(first["added"], 2)
+            self.assertEqual(second["added"], 0)
+            self.assertEqual(count, 2)
 
 
 if __name__ == "__main__":
