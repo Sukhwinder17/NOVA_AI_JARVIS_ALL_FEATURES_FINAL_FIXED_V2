@@ -100,6 +100,8 @@ def create_or_start_session(webhook_url=None):
             "customHeaders": [{"name": "X-NOVA-WAHA-TOKEN", "value": cfg["webhook_token"]}],
         }]
     sessions = check_connection()
+    if isinstance(sessions, dict):
+        sessions = sessions.get("sessions", [sessions])
     found = any((item.get("name") or item.get("session")) == name for item in sessions if isinstance(item, dict))
     if not found:
         body = {"name": name, "config": {"webhooks": webhooks}}
