@@ -24,4 +24,4 @@ This foundation persists verified webhook events and provides an official API se
 
 NOVA WA now includes a separate **WAHA Link** tab. It can generate local access keys, start the WAHA Docker Compose service, create/start a named session, display the QR code, receive incoming text through a token-protected local webhook, and send a message only after the user clicks Send and confirms.
 
-Read `../WAHA_SETUP.md` for Windows setup. WAHA is an unofficial WhatsApp linked-device integration and can carry account restriction risk. It is separate from the official Meta Business Cloud API channel. Automatic replies remain off; the WAHA connector does not send AI replies.
+Read `../../WAHA_SETUP.md` for Windows setup. WAHA is an unofficial WhatsApp linked-device integration and can carry account restriction risk. It is separate from the official Meta Business Cloud API channel. Automatic replies remain off; the WAHA connector does not send AI replies.
