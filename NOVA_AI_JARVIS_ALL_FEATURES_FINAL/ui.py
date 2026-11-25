@@ -552,7 +552,6 @@ class NovaWindow(QMainWindow):
             ("FILES", "find my DataLens files"),
             ("YOUTUBE", "open youtube"),
             ("DATALENS", "open datalens"),
-            ("WHATSAPP", "open whatsapp"),
             ("VISION", "explain this screen"),
             ("CHECK", "check nova features"),
         ]:
@@ -560,17 +559,17 @@ class NovaWindow(QMainWindow):
             chips.addWidget(chip)
         rl.addLayout(chips)
 
-        # NOVA WA workspace: personal chats are imported manually; no personal-account automation.
-        wa_button = QPushButton("NOVA WA  ✦")
-        wa_button.setObjectName("sendButton")
-        wa_button.clicked.connect(self.open_whatsapp_wa)
-        rl.addWidget(wa_button)
+        # ChatGPT conversation fusion: merge imported histories and continue with shared context.
+        fusion_button = QPushButton("CHAT FUSION  ✦")
+        fusion_button.setObjectName("sendButton")
+        fusion_button.clicked.connect(self.open_chat_fusion)
+        rl.addWidget(fusion_button)
 
         # Composer.
         row = QHBoxLayout()
         row.setSpacing(8)
         self.input = QLineEdit()
-        self.input.setPlaceholderText("Talk to NOVA — e.g.  open Blender  •  find my DataLens files  •  send hi to Sukhwinder")
+        self.input.setPlaceholderText("Talk to NOVA — e.g. open Blender  •  find my DataLens files  •  analyze a document")
         self.input.returnPressed.connect(self.send)
         row.addWidget(self.input, 1)
 
@@ -606,7 +605,7 @@ class NovaWindow(QMainWindow):
         else:
             self.add_message(
                 "NOVA",
-                "Hello. I’m NOVA. Tell me what you want done — open an app, find a file, control the browser, send a message, analyze your screen, or just chat.",
+                "Hello. I’m NOVA. Tell me what you want done — open an app, find a file, control the browser, analyze your screen, or just chat.",
             )
 
         self.bus.reply.connect(self.on_reply)
@@ -622,14 +621,14 @@ class NovaWindow(QMainWindow):
 
         self.show()
 
-    def open_whatsapp_wa(self):
+    def open_chat_fusion(self):
         try:
-            from whatsapp_wa_dialog import NovaWADialog
-            dialog = NovaWADialog(self)
+            from chat_fusion_dialog import ChatFusionDialog
+            dialog = ChatFusionDialog(self.orchestrator, self.provider.currentText().lower(), self)
             dialog.exec()
         except Exception as exc:
             from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.critical(self, "NOVA WA", f"Could not open NOVA WA: {exc}")
+            QMessageBox.critical(self, "Chat Fusion", f"Could not open Chat Fusion: {exc}")
 
     def css(self):
         return """
@@ -903,11 +902,6 @@ class NovaWindow(QMainWindow):
             self._tts.stop()
 
     def closeEvent(self, event):
-        try:
-            from actions import whatsapp_security
-            whatsapp_security.lock()
-        except Exception:
-            pass
         super().closeEvent(event)
 
     def send(self):
@@ -918,52 +912,6 @@ class NovaWindow(QMainWindow):
         self.input.clear()
         self.add_message("YOU", text)
         low = text.lower().strip()
-
-        if low in ("/whatsapp setup", "/whatsapp unlock", "/whatsapp lock", "/whatsapp token", "/whatsapp verify-token"):
-            try:
-                from actions import whatsapp_security as ws
-                if low == "/whatsapp setup":
-                    if ws.is_configured():
-                        self.add_message("NOVA", "A WhatsApp password is already configured. Use /whatsapp unlock.")
-                    else:
-                        first, ok = QInputDialog.getText(self, "Set WhatsApp Password", "Create a separate password (10+ characters):", QLineEdit.EchoMode.Password)
-                        if not ok or not first:
-                            self.add_message("NOVA", "Password setup cancelled.")
-                        else:
-                            second, ok2 = QInputDialog.getText(self, "Confirm WhatsApp Password", "Enter the same password again:", QLineEdit.EchoMode.Password)
-                            if ok2 and first == second:
-                                ws.setup_password(first)
-                                self.add_message("NOVA", "WhatsApp password created. WhatsApp is unlocked for this NOVA session. Use /whatsapp lock when finished.")
-                            else:
-                                self.add_message("NOVA", "Passwords did not match. No password was saved.")
-                elif low == "/whatsapp unlock":
-                    if not ws.is_configured():
-                        self.add_message("NOVA", "No password is set. Run /whatsapp setup first.")
-                    else:
-                        pw, ok = QInputDialog.getText(self, "Unlock WhatsApp", "Enter your NOVA WhatsApp password:", QLineEdit.EchoMode.Password)
-                        if ok and ws.unlock(pw):
-                            self.add_message("NOVA", "WhatsApp unlocked for this session.")
-                        elif ok:
-                            self.add_message("NOVA", "Incorrect password.")
-                elif low == "/whatsapp lock":
-                    ws.lock()
-                    self.add_message("NOVA", "WhatsApp locked.")
-                elif low == "/whatsapp verify-token":
-                    ws.require_unlocked()
-                    saved_token = ws.get_token()
-                    if saved_token:
-                        self.add_message("NOVA", "Token decryption test PASSED. The token was not displayed.")
-                    else:
-                        self.add_message("NOVA", "Token decryption test FAILED: saved token is empty.")
-                else:
-                    ws.require_unlocked()
-                    token, ok = QInputDialog.getText(self, "Save WPPConnect Token", "Paste the session token. It will be encrypted with Windows DPAPI:", QLineEdit.EchoMode.Password)
-                    if ok and token:
-                        ws.save_token(token)
-                        self.add_message("NOVA", "WPPConnect token encrypted and saved locally.")
-            except Exception as exc:
-                self.add_message("NOVA", f"WhatsApp security: {exc}")
-            return
 
         if low in ("listen", "start listening", "listen now"):
             self.start_listening()
