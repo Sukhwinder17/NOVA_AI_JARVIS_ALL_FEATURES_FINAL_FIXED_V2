@@ -36,6 +36,9 @@ class NovaWADialog(QDialog):
         intro.setObjectName("muted"); root.addWidget(intro)
         self.tabs=QTabWidget(); root.addWidget(self.tabs,1)
         self._build_overview(); self._build_import(); self._build_memory(); self._build_modules()
+        from waha_connection_panel import WahaConnectionPanel
+        self.waha_panel = WahaConnectionPanel(self, on_import_refresh=self.refresh_all_modules)
+        self.tabs.addTab(self.waha_panel, "WAHA Link")
         self.refresh_overview()
 
     def _build_overview(self):
