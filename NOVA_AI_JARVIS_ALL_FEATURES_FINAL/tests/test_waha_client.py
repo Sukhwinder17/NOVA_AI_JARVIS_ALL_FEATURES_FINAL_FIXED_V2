@@ -60,6 +60,28 @@ class WahaClientTests(unittest.TestCase):
             self.assertEqual(second["added"], 0)
             self.assertEqual(count, 2)
 
+    def test_existing_session_duplicate_create_is_recovered(self):
+        stopped = Mock()
+        stopped.json.return_value = {"name": "nova", "status": "STOPPED"}
+        started = Mock()
+        started.content = b'{"name":"nova","status":"SCAN_QR_CODE"}'
+        started.json.return_value = {"name": "nova", "status": "SCAN_QR_CODE"}
+        with patch.object(waha_client, "settings", return_value={
+            "session": "nova", "webhook_token": "token"
+        }), patch.object(waha_client, "check_connection", return_value=[]), patch.object(
+            waha_client, "_request",
+            side_effect=[
+                RuntimeError('WAHA returned HTTP 422: {"message":"Session \\u0027nova\\u0027 already exists"}'),
+                Mock(content=b"", json=Mock(return_value={})),  # PUT update
+                stopped,  # GET session detail
+                started,  # POST start session
+            ],
+        ) as request:
+            result = waha_client.create_or_start_session("http://host.docker.internal:8788/waha/events")
+        self.assertEqual(result["status"], "SCAN_QR_CODE")
+        self.assertEqual(request.call_args_list[1].args[:2], ("PUT", "/api/sessions/nova"))
+        self.assertEqual(request.call_args_list[3].args[:2], ("POST", "/api/sessions/nova/start"))
+
 
 if __name__ == "__main__":
     unittest.main()
