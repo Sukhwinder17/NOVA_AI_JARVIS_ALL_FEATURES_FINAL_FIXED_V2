@@ -134,3 +134,45 @@ def send_text(chat_id, text):
         "text": text,
     })
     return response.json() if response.content else {"success": True}
+
+
+def sync_recent_chats(chat_limit=20, messages_per_chat=30):
+    """Import a bounded recent slice of WhatsApp chats into NOVA's local database."""
+    from .store import add_waha_history
+
+    session = settings()["session"]
+    session_path = quote(session, safe="")
+    chats_response = _request(
+        "GET", f"/api/{session_path}/chats/overview",
+        params={"limit": max(1, min(int(chat_limit), 100)), "offset": 0},
+    ).json()
+    if isinstance(chats_response, dict):
+        chats = chats_response.get("chats") or chats_response.get("items") or []
+    else:
+        chats = chats_response
+    if not isinstance(chats, list):
+        raise RuntimeError("WAHA returned an unexpected chats response.")
+    imported = 0
+    new_messages = 0
+    errors = []
+    for chat in chats[:max(1, min(int(chat_limit), 100))]:
+        chat_id = str(chat.get("id") or chat.get("chatId") or "").strip()
+        if not chat_id:
+            continue
+        title = str(chat.get("name") or chat.get("pushName") or chat_id)
+        try:
+            messages = _request(
+                "GET",
+                f"/api/{session_path}/chats/{quote(chat_id, safe='')}/messages",
+                params={"limit": max(1, min(int(messages_per_chat), 100)), "offset": 0, "downloadMedia": "false"},
+            ).json()
+            if isinstance(messages, dict):
+                messages = messages.get("messages") or messages.get("items") or []
+            if not isinstance(messages, list):
+                continue
+            result = add_waha_history(session, chat_id, title, messages)
+            imported += 1
+            new_messages += result["added"]
+        except Exception as exc:
+            errors.append(f"{title}: {exc}")
+    return {"chats_seen": len(chats), "chats_synced": imported, "messages_added": new_messages, "errors": errors[:10]}
