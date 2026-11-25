@@ -19,7 +19,7 @@ WAHA uses an unofficial WhatsApp linked-device integration, not the official Wha
 
 ## Incoming messages
 
-NOVA starts a local receiver on port 8788 and configures WAHA to send message events to `host.docker.internal`. The receiver validates a private webhook token and stores incoming text messages in `data/whatsapp_wa/nova_wa.sqlite3`. Refresh NOVA WA's dashboard/modules to see newly received messages, then run analysis if desired.
+NOVA starts a local receiver on port 8788 and configures WAHA to send message events to `host.docker.internal`. The receiver validates a private webhook token and stores incoming text messages in `data/whatsapp_wa/nova_wa.sqlite3`. Refresh NOVA WA's dashboard/modules to see newly received messages, The WAHA Link tab also has **Sync recent chats into NOVA**: it imports up to 20 recent chats and 30 text messages per chat. It deduplicates message IDs and does not download media. Run NOVA's analysis afterward if desired.
 
 The receiver binds to the host interfaces so the Docker container can reach it. The webhook token is required; do not expose port 8788 to the internet or share the token.
 
