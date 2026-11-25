@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
@@ -189,8 +189,8 @@ class WahaConnectionPanel(QWidget):
             })
             self._start_receiver()
             detail = waha_client.create_or_start_session("http://host.docker.internal:8788/waha/events")
-            self.status.setText(f"Session response: {detail}\nIf status is SCAN_QR_CODE, refresh the QR and scan from WhatsApp → Linked devices.")
-            self.refresh_qr()
+            self.status.setText(f"Session response: {detail}\nWAHA may need a few seconds to generate the QR. It will refresh automatically.")
+            QTimer.singleShot(3500, self.refresh_qr)
         except Exception as exc:
             QMessageBox.warning(self, "WAHA link", str(exc))
 
