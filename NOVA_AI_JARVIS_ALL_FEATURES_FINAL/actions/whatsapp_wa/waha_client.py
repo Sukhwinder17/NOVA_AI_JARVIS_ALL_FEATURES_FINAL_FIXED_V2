@@ -108,7 +108,7 @@ def create_or_start_session(webhook_url=None):
         response = _request("POST", "/api/sessions/", json=body)
         return response.json() if response.content else {"name": name, "status": "STARTING"}
     if webhooks:
-        _request("POST", f"/api/sessions/{quote(name, safe='')}/", json={"config": {"webhooks": webhooks}})
+        _request("PUT", f"/api/sessions/{quote(name, safe='')}", json={"config": {"webhooks": webhooks}})
     detail = _request("GET", f"/api/sessions/{quote(name, safe='')}").json()
     status = str(detail.get("status", "")).upper()
     if status not in ("WORKING", "SCAN_QR_CODE", "STARTING", "STARTED"):
