@@ -222,22 +222,52 @@ class WahaConnectionPanel(QWidget):
 
     def refresh_qr(self):
         try:
+            from urllib.parse import quote
+            name = quote(self.session.text().strip(), safe="")
+            detail = waha_client._request("GET", f"/api/sessions/{name}").json()
+            status = str(detail.get("status", "")).upper() if isinstance(detail, dict) else ""
+
+            if status in ("STARTING", "STOPPED", "UNKNOWN", ""):
+                self.status.setText(
+                    f"WAHA session status is {status or 'not available'}. Waiting for QR mode… "
+                    "NOVA will check again in 3 seconds."
+                )
+                QTimer.singleShot(3000, self.refresh_qr)
+                return
+
+            if status == "WORKING":
+                self.qr_label.setText("WhatsApp is already linked and the session is working.")
+                self.status.setText("WAHA session is WORKING. No QR scan is needed.")
+                QMessageBox.information(self, "WhatsApp already linked", "WAHA reports this session is WORKING. You can now use Sync recent chats.")
+                return
+
+            if status != "SCAN_QR_CODE":
+                self.status.setText(
+                    f"WAHA session status: {status}. Waiting 3 seconds before checking again…"
+                )
+                QTimer.singleShot(3000, self.refresh_qr)
+                return
+
             data = waha_client.get_qr_image()
             pixmap = QPixmap()
             if not pixmap.loadFromData(data):
-                raise RuntimeError("WAHA returned a QR image that Qt could not read. Check the session status and try again.")
-            self.qr_label.setPixmap(pixmap.scaled(280, 280, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                raise RuntimeError("WAHA returned a QR image that Qt could not read.")
+            self.qr_label.setPixmap(pixmap.scaled(
+                280, 280, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            ))
             self.status.setText("QR code is ready. Scan it in WhatsApp → Linked devices → Link a device.")
             QMessageBox.information(
                 self, "WhatsApp QR ready",
                 "QR code is displayed. On your phone open WhatsApp → Linked devices → Link a device and scan it."
             )
         except Exception as exc:
-            self.status.setText("QR is not ready yet: " + str(exc))
+            message = str(exc)
+            self.status.setText("QR/status check failed: " + message)
             QMessageBox.warning(
-                self, "WAHA QR not ready",
-                str(exc) + "\\n\\nWait a few seconds and click Refresh QR again. "
-                "If it keeps failing, send this full error."
+                self, "WAHA QR/status check",
+                message + "\\n\\nIf the session remains STARTING for over a minute, "
+                "check the WAHA container logs with: docker logs --tail 100 nova-waha"
             )
 
     def stop_session(self):
