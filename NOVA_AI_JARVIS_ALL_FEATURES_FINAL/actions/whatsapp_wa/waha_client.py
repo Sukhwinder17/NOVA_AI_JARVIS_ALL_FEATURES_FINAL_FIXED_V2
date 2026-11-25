@@ -38,7 +38,8 @@ def settings():
 
 
 def save_settings(values):
-    current = _read_env_file()
+    # Preserve comments and unrelated application settings in the user's .env.
+    existing = ENV_PATH.read_text(encoding="utf-8", errors="replace").splitlines() if ENV_PATH.exists() else []
     keys = {
         "NOVA_WAHA_URL": str(values.get("url") or DEFAULT_URL).strip().rstrip("/"),
         "NOVA_WAHA_API_KEY": str(values.get("api_key") or "").strip(),
@@ -46,18 +47,24 @@ def save_settings(values):
         "NOVA_WAHA_WEBHOOK_TOKEN": str(values.get("webhook_token") or "").strip(),
         "NOVA_WAHA_DASHBOARD_PASSWORD": str(values.get("dashboard_password") or "").strip(),
     }
-    current.update(keys)
-    lines = []
-    for key, value in current.items():
-        # Quote values containing spaces or # so dotenv parsers preserve them.
-        if any(ch in value for ch in (" ", "#", '"')):
-            value = '"' + value.replace('"', '\\"') + '"'
-        lines.append(f"{key}={value}")
-    ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    found = set()
+    output = []
+    for line in existing:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in keys:
+                output.append(f"{key}={keys[key]}")
+                found.add(key)
+                continue
+        output.append(line)
+    for key, value in keys.items():
+        if key not in found:
+            output.append(f"{key}={value}")
+    ENV_PATH.write_text("\n".join(output) + "\n", encoding="utf-8")
     for key, value in keys.items():
         os.environ[key] = value
     return keys
-
 
 def _request(method, endpoint, *, params=None, json=None, accept=None, timeout=20):
     cfg = settings()
