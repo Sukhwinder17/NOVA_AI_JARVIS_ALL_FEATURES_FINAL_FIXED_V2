@@ -1,0 +1,24 @@
+name: NOVA Chat Fusion Tests
+
+on:
+  push:
+    branches:
+      - feature/nova-wa-official
+  pull_request:
+
+jobs:
+  test-chat-fusion:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: python -m pip install PyQt6 openai python-dotenv pytest
+      - name: Run Chat Fusion parser tests
+        working-directory: NOVA_AI_JARVIS_ALL_FEATURES_FINAL
+        run: python -m pytest -q tests/test_chat_fusion.py
+      - name: Compile changed Python modules
+        working-directory: NOVA_AI_JARVIS_ALL_FEATURES_FINAL
+        run: python -m py_compile chat_fusion_dialog.py ui.py core/orchestrator.py core/llm_router.py
