@@ -27,7 +27,6 @@ GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.8-flash').strip()
 DATALENS_URL = os.getenv('DATALENS_URL', 'https://frontend-liard-rho-s59bfvv4uq.vercel.app').strip()
 EVERYTHING_EXE = os.getenv('EVERYTHING_EXE', str(BASE_DIR / 'tools' / 'bin' / 'es.exe')).strip()
 NOVA_BROWSER_PROFILE = os.getenv('NOVA_BROWSER_PROFILE', str(BASE_DIR / 'data' / 'browser_profile')).strip()
-WHATSAPP_URL = os.getenv('WHATSAPP_URL', 'https://web.whatsapp.com').strip()
 
 TTS_VOICE = os.getenv('NOVA_TTS_VOICE', 'David').strip()
 TTS_RATE = int(os.getenv('NOVA_TTS_RATE', '180') or 180)

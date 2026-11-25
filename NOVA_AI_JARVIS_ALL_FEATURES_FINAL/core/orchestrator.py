@@ -52,37 +52,6 @@ class NovaOrchestrator:
             "task_manager": self.task_manager,
         }
 
-        # Critical-action recovery: WhatsApp sending must remain callable even
-        # if startup discovery skipped its module. Load the exact bundled file
-        # lazily and report the real import/validation error instead of the
-        # misleading generic "Action is not available" message.
-        if name == "send_message" and not self.registry.has(name):
-            try:
-                import importlib.util
-                action_path = config.BASE_DIR / "actions" / "send_message.py"
-                spec = importlib.util.spec_from_file_location(
-                    "_nova_send_message_recovery", action_path
-                )
-                if spec is None or spec.loader is None:
-                    raise ImportError(f"Cannot load action file: {action_path}")
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                tool = getattr(module, "TOOL", None)
-                if not isinstance(tool, dict) or tool.get("name") != "send_message":
-                    raise ValueError("send_message.py does not expose the expected TOOL declaration")
-                handler = tool.get("handler")
-                if not callable(handler):
-                    raise ValueError("send_message TOOL handler is not callable")
-                self._log("Recovered send_message action through lazy loading.")
-                return handler(parameters=args, **{
-                    key: value for key, value in ctx.items()
-                    if key in __import__("inspect").signature(handler).parameters
-                    or any(p.kind == p.VAR_KEYWORD for p in __import__("inspect").signature(handler).parameters.values())
-                })
-            except Exception as exc:
-                self._log(f"send_message lazy-load failed: {type(exc).__name__}: {exc}")
-                return f"WhatsApp action could not load: {type(exc).__name__}: {exc}"
-
         return self.registry.run(name, args, ctx)
 
     @staticmethod
@@ -274,7 +243,6 @@ class NovaOrchestrator:
 
         # High-priority explicit SMS scheduling syntax.
         # A numeric recipient means PHONE/SMSGate by default.
-        # WhatsApp is only selected when the command explicitly contains "WhatsApp".
         explicit_sms_date = re.match(
             r"""^(?:schedule\s+|send\s+)?(?:an?\s+)?(?:sms|text(?:\s+message)?)\s+to\s+"""
             r"""(?P<recipient>\+?\d{10,13})\s+(?:at\s+|on\s+)?"""
@@ -407,21 +375,6 @@ class NovaOrchestrator:
                         return "That time has already passed. Please enter a future time, such as 3:10 PM, or say 'tomorrow at 2:10 PM'."
                     return "Please give me a valid time, such as 7:30 PM."
 
-        # Explicit WhatsApp commands. Mentioning "WhatsApp" is required
-        # when sending to a phone number through WhatsApp.
-        whatsapp_number = re.match(
-            r"""^(?:whatsapp\s+)?(?:send\s+)?(?:a\s+)?(?:whatsapp\s+)?(?:message\s+)?"""
-            r"""(?:to\s+)?(?P<recipient>\+?\d{10,13})\s+(?:saying|say|that\s+says|:|-)\s*"""
-            r"""["']?(?P<message>.+?)["']?$""",
-            t, re.I | re.S,
-        )
-        if whatsapp_number and re.search(r"\bwhatsapp\b", low):
-            return self._run("send_message", {
-                "receiver": whatsapp_number.group("recipient"),
-                "message_text": whatsapp_number.group("message").strip(),
-                "platform": "whatsapp",
-            })
-
         # Native SMS commands. These open the phone's real SMS composer with the
         # recipient and message filled in, instead of creating a NOVA notification.
         sms_patterns = [
@@ -485,7 +438,7 @@ class NovaOrchestrator:
                 if app.lower() not in ("phone", "mobile", "android"):
                     return self._run("phone_manager", {"action": "launch_app", "app": app})
 
-        if re.search(phone, low) and re.search(r"\b(?:open|go to|visit)\b", low) and re.search(r"https?://|\b(?:www\.|youtube|google|instagram|facebook|whatsapp|spotify)\b", low):
+        if re.search(phone, low) and re.search(r"\b(?:open|go to|visit)\b", low) and re.search(r"https?://|\b(?:www\.|youtube|google|instagram|facebook|spotify)\b", low):
             url = re.search(r"https?://\S+", t)
             if url:
                 target = url.group(0)
@@ -495,7 +448,6 @@ class NovaOrchestrator:
                     "google": "https://www.google.com/",
                     "instagram": "https://www.instagram.com/",
                     "facebook": "https://www.facebook.com/",
-                    "whatsapp": "https://web.whatsapp.com/",
                     "spotify": "https://open.spotify.com/",
                 }
                 target = next((u for k, u in targets.items() if k in low), "")
@@ -533,26 +485,6 @@ class NovaOrchestrator:
                 folder = "desktop"
             return self._run("file_controller", {"action": "list", "path": folder})
 
-        # WhatsApp commands are deterministic local actions. Route them
-        # before the LLM planner so a missing tool declaration cannot prevent
-        # the command from reaching the bundled send_message handler.
-        whatsapp_patterns = [
-            r"^send\s+(?:a\s+)?whatsapp\s+message\s+to\s+(.+?)\s+saying\s+(.+)$",
-            r"^send\s+whatsapp\s+to\s+(.+?)\s+(?:saying|say)\s+(.+)$",
-            r"^whatsapp\s+(?:message\s+)?to\s+(.+?)\s+(?:saying|say)\s+(.+)$",
-        ]
-        for pattern in whatsapp_patterns:
-            match = re.match(pattern, t, re.I | re.S)
-            if match:
-                receiver = match.group(1).strip(" \"'")
-                message_text = match.group(2).strip(" \"'")
-                if receiver and message_text:
-                    return self._run("send_message", {
-                        "receiver": receiver,
-                        "message_text": message_text,
-                        "platform": "whatsapp",
-                    })
-
         # Natural Language Task Planning & Orchestration layer
         # Handle PC file searches before the task planner.
         if re.search(r"\b(?:find|search|locate|look for|show me)\b", low) and re.search(r"\b(?:file|files|pdf|project|document|folder|python|code|dataset|image|video|filename|file\s+name)\b", low):
@@ -567,56 +499,10 @@ class NovaOrchestrator:
         if planned is not None:
             return planned[0]
 
-        # WhatsApp message commands MUST be handled before generic open-app routing.
-        patterns = [
-            r"^open\s+whatsapp(?:\s+web)?\s+and\s+(?:say|send(?:\s+message)?)\s+(.+?)\s+to\s+(.+?)$",
-            r"^whatsapp\s+(?:say|send(?:\s+message)?)\s+(.+?)\s+to\s+(.+?)$",
-        ]
-        for pattern in patterns:
-            m = re.match(pattern, t, re.I)
-            if m:
-                message_text = m.group(1).strip(" \"'")
-                receiver = m.group(2).strip(" \"'")
-                return self._run("send_message", {
-                    "receiver": receiver,
-                    "message_text": message_text,
-                    "platform": "whatsapp",
-                })
-
-        # "send message to NAME say MESSAGE"
-        m = re.match(
-            r"^(?:send\s+(?:a\s+)?message\s+to|message\s+)"
-            r"(.+?)\s+(?:saying|say|that\s+says|:)\s*"
-            r"[\"']?(.+?)[\"']?$", t, re.I,
-        )
-        if m:
-            return self._run("send_message", {
-                "receiver": m.group(1).strip(" \"'"),
-                "message_text": m.group(2).strip(" \"'"),
-                "platform": "whatsapp",
-            })
-
-        # "send MESSAGE to NAME" is WhatsApp only when the receiver is a name,
-        # never a numeric phone number. Numeric recipients default to SMS above.
-        m = re.match(r"^send\s+(.+?)\s+to\s+(.+?)$", t, re.I)
-        if m and len(m.group(1)) < 300:
-            receiver = m.group(2).strip()
-            if not re.fullmatch(r"\+?\d[\d\s().-]{4,}", receiver):
-                return self._run("send_message", {
-                    "receiver": receiver,
-                    "message_text": m.group(1).strip(),
-                    "platform": "whatsapp",
-                })
-
         # Explicit websites
         if re.fullmatch(r"(?:open|go to|start|launch)\s+(?:youtube|yt)", low):
             return self._run("browser_control", {
                 "action": "go_to", "browser": "chrome", "url": "https://www.youtube.com/"
-            })
-
-        if re.fullmatch(r"(?:open|go to|start|launch)\s+whatsapp(?:\s+web)?", low):
-            return self._run("browser_control", {
-                "action": "go_to", "browser": "chrome", "url": config.WHATSAPP_URL
             })
 
         if re.fullmatch(r"(?:open|go to|start|launch)\s+datalens", low):
