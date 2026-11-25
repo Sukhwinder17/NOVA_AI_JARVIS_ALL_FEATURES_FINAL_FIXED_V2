@@ -16,3 +16,7 @@ data/whatsapp/
 
 # NOVA WA local conversation database and imported personal chat data
 data/whatsapp_wa/
+
+# WAHA linked-device session credentials and received media (never commit)
+.sessions/
+.media/
