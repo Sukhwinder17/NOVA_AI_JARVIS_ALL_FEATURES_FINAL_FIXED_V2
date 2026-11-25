@@ -21,6 +21,8 @@ jobs:
           python-version: "3.11"
       - name: Install lightweight test dependency
         run: python -m pip install requests
+      - name: Compile NOVA WA modules
+        run: python -m compileall -q actions/whatsapp_wa whatsapp_wa_dialog.py waha_connection_panel.py
       - name: Run NOVA WA unit tests
         run: python -m unittest discover -s tests -p "test_waha_client.py"
       - name: Run WhatsApp importer tests
