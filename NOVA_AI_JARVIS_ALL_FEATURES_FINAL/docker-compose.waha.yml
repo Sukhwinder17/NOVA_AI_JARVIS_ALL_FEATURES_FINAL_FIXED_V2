@@ -1,0 +1,18 @@
+services:
+  waha:
+    image: devlikeapro/waha
+    container_name: nova-waha
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      WAHA_API_KEY: ${NOVA_WAHA_API_KEY:?Set NOVA_WAHA_API_KEY in the project .env}
+      WAHA_DASHBOARD_USERNAME: admin
+      WAHA_DASHBOARD_PASSWORD: ${NOVA_WAHA_DASHBOARD_PASSWORD:?Set NOVA_WAHA_DASHBOARD_PASSWORD in the project .env}
+      WAHA_PRINT_QR: "False"
+      WAHA_WORKER_RESTART_SESSIONS: "True"
+      WHATSAPP_FILES_FOLDER: /app/.media
+      WHATSAPP_FILES_LIFETIME: "0"
+    volumes:
+      - ./.sessions:/app/.sessions
+      - ./.media:/app/.media
