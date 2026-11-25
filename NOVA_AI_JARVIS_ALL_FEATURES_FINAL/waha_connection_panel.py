@@ -6,8 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import Qt, QTimer, QUrl
+from PyQt6.QtGui import QPixmap, QDesktopServices
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QPlainTextEdit, QMessageBox, QGroupBox, QFormLayout, QSizePolicy
@@ -73,6 +73,15 @@ class WahaConnectionPanel(QWidget):
         stop.clicked.connect(self.stop_session)
         pair_row.addWidget(stop)
         root.addLayout(pair_row)
+
+        sync_row = QHBoxLayout()
+        sync = QPushButton("Sync recent chats into NOVA (up to 20 chats × 30 messages)")
+        sync.clicked.connect(self.sync_chats)
+        sync_row.addWidget(sync)
+        dashboard = QPushButton("Open WAHA Dashboard")
+        dashboard.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self.url.text().rstrip("/") + "/dashboard")))
+        sync_row.addWidget(dashboard)
+        root.addLayout(sync_row)
 
         self.qr_label = QLabel("QR code will appear here after WAHA starts the session.")
         self.qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -230,3 +239,30 @@ class WahaConnectionPanel(QWidget):
             self.message.clear()
         except Exception as exc:
             QMessageBox.warning(self, "Send message", str(exc))
+
+
+    def sync_chats(self):
+        answer = QMessageBox.question(
+            self, "Sync WhatsApp chats",
+            "NOVA will read up to 20 recent chats and up to 30 messages per chat from WAHA, "
+            "then store their text locally in the NOVA WA database. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.status.setText("Syncing recent WhatsApp chats into NOVA. Please wait…")
+            result = waha_client.sync_recent_chats(chat_limit=20, messages_per_chat=30)
+            self.status.setText(
+                f"Sync finished: {result['chats_synced']} chats, {result['messages_added']} new messages. "
+                f"Errors: {len(result['errors'])}"
+            )
+            if self.on_import_refresh:
+                self.on_import_refresh()
+            if result["errors"]:
+                QMessageBox.warning(self, "Some chats could not sync", "\\n".join(result["errors"][:5]))
+            else:
+                QMessageBox.information(self, "NOVA WA sync", self.status.text())
+        except Exception as exc:
+            QMessageBox.warning(self, "Chat sync failed", str(exc))
