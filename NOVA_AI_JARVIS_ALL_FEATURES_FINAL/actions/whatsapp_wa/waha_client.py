@@ -90,8 +90,10 @@ def check_connection():
 
 
 def create_or_start_session(webhook_url=None):
+    """Create or reuse a WAHA session, then ensure it is started."""
     cfg = settings()
     name = cfg["session"]
+    encoded_name = quote(name, safe="")
     webhooks = []
     if webhook_url and cfg["webhook_token"]:
         webhooks = [{
@@ -99,23 +101,42 @@ def create_or_start_session(webhook_url=None):
             "events": ["message"],
             "customHeaders": [{"name": "X-NOVA-WAHA-TOKEN", "value": cfg["webhook_token"]}],
         }]
+
     sessions = check_connection()
     if isinstance(sessions, dict):
-        sessions = sessions.get("sessions", [sessions])
-    found = any((item.get("name") or item.get("session")) == name for item in sessions if isinstance(item, dict))
+        sessions = sessions.get("sessions") or sessions.get("items") or [sessions]
+    if not isinstance(sessions, list):
+        sessions = []
+    found = any(
+        isinstance(item, dict) and (item.get("name") or item.get("session")) == name
+        for item in sessions
+    )
+
     if not found:
         body = {"name": name, "config": {"webhooks": webhooks}}
-        response = _request("POST", "/api/sessions/", json=body)
-        return response.json() if response.content else {"name": name, "status": "STARTING"}
-    if webhooks:
-        _request("PUT", f"/api/sessions/{quote(name, safe='')}", json={"config": {"webhooks": webhooks}})
-    detail = _request("GET", f"/api/sessions/{quote(name, safe='')}").json()
+        try:
+            _request("POST", "/api/sessions/", json=body)
+        except RuntimeError as exc:
+            # WAHA may return a nonstandard session-list shape. If create says
+            # the session already exists, recover by updating it instead.
+            if "already exists" not in str(exc).lower():
+                raise
+            _request(
+                "PUT", f"/api/sessions/{encoded_name}",
+                json={"config": {"webhooks": webhooks}},
+            )
+    elif webhooks:
+        _request(
+            "PUT", f"/api/sessions/{encoded_name}",
+            json={"config": {"webhooks": webhooks}},
+        )
+
+    detail = _request("GET", f"/api/sessions/{encoded_name}").json()
     status = str(detail.get("status", "")).upper()
     if status not in ("WORKING", "SCAN_QR_CODE", "STARTING", "STARTED"):
-        response = _request("POST", f"/api/sessions/{quote(name, safe='')}/start", json={})
+        response = _request("POST", f"/api/sessions/{encoded_name}/start", json={})
         return response.json() if response.content else {"name": name, "status": "STARTING"}
     return detail
-
 
 def get_qr_image():
     name = quote(settings()["session"], safe="")
