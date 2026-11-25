@@ -159,9 +159,16 @@ class WahaConnectionPanel(QWidget):
     def check_api(self):
         try:
             sessions = waha_client.check_connection()
-            self.status.setText(f"WAHA API connected. Sessions response: {sessions}")
+            summary = f"WAHA API connected successfully. Session list: {sessions}"
+            self.status.setText(summary)
+            QMessageBox.information(
+                self, "WAHA connection successful",
+                "NOVA connected to WAHA at " + self.url.text().strip() +
+                "\\n\\nWAHA is running. Next click Start / Link WhatsApp."
+            )
         except Exception as exc:
-            QMessageBox.warning(self, "WAHA connection", str(exc))
+            self.status.setText("WAHA connection failed: " + str(exc))
+            QMessageBox.warning(self, "WAHA connection failed", str(exc))
 
     def _start_receiver(self):
         # The container reaches the Windows host through host.docker.internal.
