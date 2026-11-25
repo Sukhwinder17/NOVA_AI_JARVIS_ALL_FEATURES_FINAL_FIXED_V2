@@ -33,6 +33,7 @@ def settings():
         "api_key": os.getenv("NOVA_WAHA_API_KEY") or file_values.get("NOVA_WAHA_API_KEY") or "",
         "session": os.getenv("NOVA_WAHA_SESSION") or file_values.get("NOVA_WAHA_SESSION") or DEFAULT_SESSION,
         "webhook_token": os.getenv("NOVA_WAHA_WEBHOOK_TOKEN") or file_values.get("NOVA_WAHA_WEBHOOK_TOKEN") or "",
+        "dashboard_password": os.getenv("NOVA_WAHA_DASHBOARD_PASSWORD") or file_values.get("NOVA_WAHA_DASHBOARD_PASSWORD") or "",
     }
 
 
@@ -43,6 +44,7 @@ def save_settings(values):
         "NOVA_WAHA_API_KEY": str(values.get("api_key") or "").strip(),
         "NOVA_WAHA_SESSION": str(values.get("session") or DEFAULT_SESSION).strip(),
         "NOVA_WAHA_WEBHOOK_TOKEN": str(values.get("webhook_token") or "").strip(),
+        "NOVA_WAHA_DASHBOARD_PASSWORD": str(values.get("dashboard_password") or "").strip(),
     }
     current.update(keys)
     lines = []
