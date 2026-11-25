@@ -205,7 +205,17 @@ class WahaConnectionPanel(QWidget):
             })
             self._start_receiver()
             detail = waha_client.create_or_start_session("http://host.docker.internal:8788/waha/events")
-            self.status.setText(f"Session response: {detail}\nWAHA may need a few seconds to generate the QR. It will refresh automatically.")
+            session_status = str(detail.get("status", "STARTING")).upper() if isinstance(detail, dict) else "STARTING"
+            self.status.setText(
+                f"WAHA session '{self.session.text().strip()}' response: {detail}. "
+                "Waiting for QR authentication…"
+            )
+            QMessageBox.information(
+                self, "WAHA session started",
+                f"Session: {self.session.text().strip()}\\nStatus: {session_status}\\n\\n"
+                "NOVA will try to fetch the QR in a few seconds. If it is not ready, "
+                "click Refresh QR and read the status message."
+            )
             QTimer.singleShot(3500, self.refresh_qr)
         except Exception as exc:
             QMessageBox.warning(self, "WAHA link", str(exc))
@@ -217,9 +227,18 @@ class WahaConnectionPanel(QWidget):
             if not pixmap.loadFromData(data):
                 raise RuntimeError("WAHA returned a QR image that Qt could not read. Check the session status and try again.")
             self.qr_label.setPixmap(pixmap.scaled(280, 280, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-            self.status.setText("Scan this QR in WhatsApp → Settings/⋮ → Linked devices → Link a device.")
+            self.status.setText("QR code is ready. Scan it in WhatsApp → Linked devices → Link a device.")
+            QMessageBox.information(
+                self, "WhatsApp QR ready",
+                "QR code is displayed. On your phone open WhatsApp → Linked devices → Link a device and scan it."
+            )
         except Exception as exc:
-            self.status.setText(str(exc))
+            self.status.setText("QR is not ready yet: " + str(exc))
+            QMessageBox.warning(
+                self, "WAHA QR not ready",
+                str(exc) + "\\n\\nWait a few seconds and click Refresh QR again. "
+                "If it keeps failing, send this full error."
+            )
 
     def stop_session(self):
         try:
