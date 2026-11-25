@@ -10,13 +10,3 @@ outputs/*
 config/google_credentials.json
 config/credentials.json
 credentials.json
-
-# WhatsApp linked-device session data (never commit)
-data/whatsapp/
-
-# NOVA WA local conversation database and imported personal chat data
-data/whatsapp_wa/
-
-# WAHA linked-device session credentials and received media (never commit)
-.sessions/
-.media/
